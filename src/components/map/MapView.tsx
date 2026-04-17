@@ -330,13 +330,13 @@ export default function MapView() {
         </button>
       )}
 
-      {/* ── Bottom Sheet ── */}
+      {/* ── Bottom Sheet — nad bottom nav (z-index 60 > nav z-index 50) ── */}
       {showBottomSheet && (
         <div
           className="animate-slide-up"
           style={{
             position: 'fixed',
-            bottom: '72px',  /* sits above bottom nav */
+            bottom: 'calc(72px + env(safe-area-inset-bottom))',
             left: 0,
             right: 0,
             background: 'rgba(18,21,30,0.97)',
@@ -345,8 +345,8 @@ export default function MapView() {
             borderTop: '1px solid rgba(45,49,72,0.8)',
             borderRadius: '24px 24px 0 0',
             boxShadow: '0 -8px 40px rgba(0,0,0,0.6)',
-            zIndex: 40,
-            maxHeight: '60vh',
+            zIndex: 60,
+            maxHeight: '58vh',
             overflowY: 'auto',
           }}
         >
