@@ -3,12 +3,13 @@ import { Metadata } from 'next'
 import Image from 'next/image'
 import Link from 'next/link'
 import {
-  ArrowLeft, MapPin, Phone, Mail, Globe, Clock,
+  MapPin, Phone, Mail, Globe, Clock,
   ExternalLink, Heart, Share2, Navigation
 } from 'lucide-react'
 import { createServerDataClient } from '@/lib/data-server'
 import { PLACE_TYPE_LABELS, PLACE_TYPE_COLORS, PLACE_TYPE_ICONS, getGoogleMapsUrl } from '@/lib/utils'
 import CheckinSection from './CheckinSection'
+import BackButton from '@/components/ui/BackButton'
 
 interface PageProps {
   params: { id: string }
@@ -76,12 +77,7 @@ export default async function PlacePage({ params }: PageProps) {
 
         {/* Nawigacja górna */}
         <div className="absolute top-4 left-4 right-4 flex justify-between items-center">
-          <Link
-            href="/map"
-            className="w-10 h-10 rounded-xl bg-surface-card/80 backdrop-blur border border-surface-border flex items-center justify-center"
-          >
-            <ArrowLeft className="w-5 h-5 text-white" />
-          </Link>
+          <BackButton />
           <div className="flex gap-2">
             <button className="w-10 h-10 rounded-xl bg-surface-card/80 backdrop-blur border border-surface-border flex items-center justify-center">
               <Heart className="w-5 h-5 text-white" />

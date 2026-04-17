@@ -21,49 +21,84 @@ const TYPE_OPTIONS: { value: PlaceType | 'all'; label: string }[] = [
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'Wszystkie' },
-  { value: 'undiscovered', label: 'Nieodkryte' },
-  { value: 'completed', label: 'Zaliczone' },
+  { value: 'undiscovered', label: '⚪ Nieodkryte' },
+  { value: 'completed', label: '✅ Zaliczone' },
 ] as const
 
 export default function MapFiltersPanel({ filters, onChange, onClose }: MapFiltersPanelProps) {
   const update = (patch: Partial<MapFilters>) => onChange({ ...filters, ...patch })
-
   const hasActiveFilters =
     filters.type !== 'all' || filters.category_id !== null || filters.status !== 'all'
 
   return (
-    <div className="card-elevated p-4 shadow-xl animate-fade-in">
+    <div
+      className="p-4 shadow-2xl animate-fade-in"
+      style={{
+        background: 'rgba(15,17,23,0.95)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        border: '1px solid rgba(45,49,72,0.9)',
+        borderRadius: '20px',
+      }}
+    >
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-white font-semibold text-sm">Filtry</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-white font-bold text-sm">Filtry</h3>
+          {hasActiveFilters && (
+            <span
+              className="text-xs font-bold px-2 py-0.5 rounded-full"
+              style={{ background: 'rgba(34,197,94,0.15)', color: '#4ade80' }}
+            >
+              Aktywne
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           {hasActiveFilters && (
             <button
               onClick={() => onChange({ type: 'all', category_id: null, status: 'all', search: filters.search })}
-              className="text-brand-400 text-xs"
+              className="text-brand-400 text-xs font-semibold"
             >
               Wyczyść
             </button>
           )}
-          <button onClick={onClose}>
-            <X className="w-4 h-4 text-slate-400" />
+          <button
+            onClick={onClose}
+            style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '8px',
+              background: 'rgba(45,49,72,0.6)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            <X className="w-3.5 h-3.5 text-slate-400" />
           </button>
         </div>
       </div>
 
-      {/* Typ punktu */}
+      {/* Type */}
       <div className="mb-4">
-        <p className="text-slate-500 text-xs uppercase tracking-wider mb-2">Typ</p>
+        <p className="text-slate-500 text-xs uppercase tracking-widest font-semibold mb-2">Typ</p>
         <div className="flex gap-1.5 flex-wrap">
           {TYPE_OPTIONS.map(({ value, label }) => (
             <button
               key={value}
               onClick={() => update({ type: value })}
-              className={cn(
-                'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                filters.type === value
-                  ? 'bg-brand-500 text-white'
-                  : 'bg-surface-card border border-surface-border text-slate-400 hover:text-slate-200'
-              )}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
+              style={{
+                background: filters.type === value
+                  ? 'rgba(34,197,94,0.2)'
+                  : 'rgba(26,29,39,0.8)',
+                border: filters.type === value
+                  ? '1px solid rgba(34,197,94,0.5)'
+                  : '1px solid rgba(45,49,72,0.8)',
+                color: filters.type === value ? '#4ade80' : '#94a3b8',
+              }}
             >
               {value !== 'all' && <span className="mr-1">{PLACE_TYPE_ICONS[value as PlaceType]}</span>}
               {label}
@@ -72,18 +107,18 @@ export default function MapFiltersPanel({ filters, onChange, onClose }: MapFilte
         </div>
       </div>
 
-      {/* Kategoria */}
+      {/* Category */}
       <div className="mb-4">
-        <p className="text-slate-500 text-xs uppercase tracking-wider mb-2">Kategoria</p>
+        <p className="text-slate-500 text-xs uppercase tracking-widest font-semibold mb-2">Kategoria</p>
         <div className="flex gap-1.5 flex-wrap">
           <button
             onClick={() => update({ category_id: null })}
-            className={cn(
-              'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-              filters.category_id === null
-                ? 'bg-brand-500 text-white'
-                : 'bg-surface-card border border-surface-border text-slate-400'
-            )}
+            className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
+            style={{
+              background: filters.category_id === null ? 'rgba(34,197,94,0.2)' : 'rgba(26,29,39,0.8)',
+              border: filters.category_id === null ? '1px solid rgba(34,197,94,0.5)' : '1px solid rgba(45,49,72,0.8)',
+              color: filters.category_id === null ? '#4ade80' : '#94a3b8',
+            }}
           >
             Wszystkie
           </button>
@@ -91,12 +126,12 @@ export default function MapFiltersPanel({ filters, onChange, onClose }: MapFilte
             <button
               key={cat.slug}
               onClick={() => update({ category_id: cat.slug })}
-              className={cn(
-                'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                filters.category_id === cat.slug
-                  ? 'bg-brand-500 text-white'
-                  : 'bg-surface-card border border-surface-border text-slate-400'
-              )}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
+              style={{
+                background: filters.category_id === cat.slug ? 'rgba(34,197,94,0.2)' : 'rgba(26,29,39,0.8)',
+                border: filters.category_id === cat.slug ? '1px solid rgba(34,197,94,0.5)' : '1px solid rgba(45,49,72,0.8)',
+                color: filters.category_id === cat.slug ? '#4ade80' : '#94a3b8',
+              }}
             >
               {cat.icon} {cat.name}
             </button>
@@ -106,18 +141,18 @@ export default function MapFiltersPanel({ filters, onChange, onClose }: MapFilte
 
       {/* Status */}
       <div>
-        <p className="text-slate-500 text-xs uppercase tracking-wider mb-2">Status</p>
+        <p className="text-slate-500 text-xs uppercase tracking-widest font-semibold mb-2">Status</p>
         <div className="flex gap-1.5">
           {STATUS_OPTIONS.map(({ value, label }) => (
             <button
               key={value}
               onClick={() => update({ status: value })}
-              className={cn(
-                'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                filters.status === value
-                  ? 'bg-brand-500 text-white'
-                  : 'bg-surface-card border border-surface-border text-slate-400'
-              )}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95"
+              style={{
+                background: filters.status === value ? 'rgba(34,197,94,0.2)' : 'rgba(26,29,39,0.8)',
+                border: filters.status === value ? '1px solid rgba(34,197,94,0.5)' : '1px solid rgba(45,49,72,0.8)',
+                color: filters.status === value ? '#4ade80' : '#94a3b8',
+              }}
             >
               {label}
             </button>

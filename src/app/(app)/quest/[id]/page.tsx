@@ -2,9 +2,10 @@ import { notFound } from 'next/navigation'
 import { Metadata } from 'next'
 import Image from 'next/image'
 import Link from 'next/link'
-import { ArrowLeft, Clock, MapPin, CheckCircle2, Circle, Lock, Trophy } from 'lucide-react'
+import { Clock, MapPin, CheckCircle2, Circle, Lock, Trophy } from 'lucide-react'
 import { createServerDataClient } from '@/lib/data-server'
 import { DIFFICULTY_LABELS, DIFFICULTY_COLORS, formatTime, cn } from '@/lib/utils'
+import BackButton from '@/components/ui/BackButton'
 
 interface PageProps { params: { id: string } }
 
@@ -64,12 +65,9 @@ export default async function QuestDetailPage({ params }: PageProps) {
           </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/40 to-transparent" />
-        <Link
-          href="/quests"
-          className="absolute top-4 left-4 w-10 h-10 rounded-xl bg-surface-card/80 backdrop-blur border border-surface-border flex items-center justify-center"
-        >
-          <ArrowLeft className="w-5 h-5 text-white" />
-        </Link>
+        <div className="absolute top-4 left-4">
+          <BackButton />
+        </div>
       </div>
 
       <div className="px-4 py-5 space-y-6">
