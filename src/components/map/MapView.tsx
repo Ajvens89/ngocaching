@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
-import Map, { Marker, type MapRef } from 'react-map-gl/mapbox'
+import Map, { Marker, type MapRef } from 'react-map-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import Supercluster from 'supercluster'
 import { Search, Filter, Navigation, X, ChevronUp, MapPin, CheckCircle2, Lock } from 'lucide-react'
