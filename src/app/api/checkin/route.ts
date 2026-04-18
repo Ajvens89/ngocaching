@@ -68,9 +68,14 @@ export async function POST(request: NextRequest) {
       }
       case 'answer': {
         // Porównanie TYLKO server-side — klient nigdy nie widzi odpowiedzi
-        const expected = String((place.verification_data as any)?.answer || '').trim().toLowerCase()
+        const vData    = place.verification_data as any
         const given    = String(answer || '').trim().toLowerCase()
-        if (expected && given !== expected) {
+        const primary  = String(vData?.answer || '').trim().toLowerCase()
+        // Opcjonalne accepted_answers[] — tablica akceptowanych wariantów
+        const accepted: string[] = Array.isArray(vData?.accepted_answers)
+          ? vData.accepted_answers.map((a: unknown) => String(a).trim().toLowerCase())
+          : primary ? [primary] : []
+        if (accepted.length > 0 && !accepted.includes(given)) {
           return NextResponse.json({ success: false, error: 'Błędna odpowiedź. Spróbuj ponownie.' }, { status: 400 })
         }
         break
