@@ -366,195 +366,226 @@ export default function MapView() {
       )}
 
       {/* ── Bottom Sheet ────────────────────────────────────────────────────── */}
-      {/* BUG FIX 3: zIndex podwyższony z 60 → 1000                            */}
-      {/* Leaflet marker pane ma z-index 600 w swoim stacking context,          */}
-      {/* ale fixed element z z-index 60 w root context mógł być pod nim        */}
       {showBottomSheet && (
         <div
           className="animate-slide-up"
           style={{
             position: 'fixed',
             bottom: 'calc(72px + env(safe-area-inset-bottom))',
-            left: 0,
-            right: 0,
-            background: 'rgba(18,21,30,0.97)',
-            backdropFilter: 'blur(24px)',
-            WebkitBackdropFilter: 'blur(24px)',
-            borderTop: '1px solid rgba(45,49,72,0.8)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '100%',
+            maxWidth: '480px',
+            background: 'rgba(13,15,22,0.98)',
+            backdropFilter: 'blur(28px)',
+            WebkitBackdropFilter: 'blur(28px)',
+            borderTop: '1px solid rgba(55,60,84,0.7)',
+            borderLeft: '1px solid rgba(55,60,84,0.4)',
+            borderRight: '1px solid rgba(55,60,84,0.4)',
             borderRadius: '24px 24px 0 0',
-            boxShadow: '0 -8px 40px rgba(0,0,0,0.6)',
+            boxShadow: '0 -12px 48px rgba(0,0,0,0.7)',
             zIndex: 1000,
-            maxHeight: '58vh',
-            overflowY: 'auto',
+            maxHeight: '62vh',
+            display: 'flex',
+            flexDirection: 'column',
           }}
         >
           {/* Drag handle */}
-          <div className="flex items-center justify-center pt-3 pb-1">
-            <div style={{ width: '36px', height: '4px', borderRadius: '99px', background: 'rgba(71,85,105,0.6)' }} />
+          <div className="flex items-center justify-center pt-3 pb-1 flex-shrink-0">
+            <div style={{ width: '40px', height: '4px', borderRadius: '99px', background: 'rgba(71,85,105,0.5)' }} />
           </div>
 
           {/* Header */}
-          <div className="flex items-center justify-between px-4 pb-3">
-            <p className="text-slate-400 text-xs font-semibold uppercase tracking-widest">
+          <div className="flex items-center justify-between px-5 pt-1 pb-3 flex-shrink-0">
+            <p className="text-slate-500 text-xs font-semibold uppercase tracking-widest">
               {selectedPlace ? 'Wybrany punkt' : userPos ? 'Blisko Ciebie' : 'Odkryj punkty'}
             </p>
             <button
               onClick={() => { setShowBottomSheet(false); setSelectedPlace(null) }}
               style={{
-                width: '28px',
-                height: '28px',
-                borderRadius: '8px',
-                background: 'rgba(45,49,72,0.6)',
+                width: '30px',
+                height: '30px',
+                borderRadius: '10px',
+                background: 'rgba(45,49,72,0.7)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
-                border: 'none',
+                border: '1px solid rgba(71,85,105,0.4)',
               }}
             >
-              <ChevronDown className="w-4 h-4 text-slate-400" />
+              <X className="w-4 h-4 text-slate-400" />
             </button>
           </div>
 
-          {/* ── Wybrany punkt — karta szczegółów ── */}
-          {selectedPlace && (
-            <div className="px-4 pb-4 space-y-3">
+          {/* ── Scrollable content ── */}
+          <div style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>
 
-              {/* Karta miejsca */}
-              <div
-                className="p-4 rounded-2xl"
-                style={{ background: 'rgba(26,29,39,0.9)', border: '1px solid rgba(45,49,72,0.8)' }}
-              >
-                <div className="flex items-start gap-3">
-                  <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0"
-                    style={{
-                      background: `${PLACE_TYPE_COLORS[selectedPlace.type]}18`,
-                      border: `1px solid ${PLACE_TYPE_COLORS[selectedPlace.type]}30`,
-                    }}
-                  >
-                    {PLACE_TYPE_ICONS[selectedPlace.type]}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <span
-                        className="text-xs font-bold px-2 py-0.5 rounded-full"
-                        style={{
-                          background: `${PLACE_TYPE_COLORS[selectedPlace.type]}18`,
-                          color: PLACE_TYPE_COLORS[selectedPlace.type],
-                        }}
-                      >
-                        {selectedPlace.category?.name || selectedPlace.type}
+            {/* ── Wybrany punkt — karta szczegółów ── */}
+            {selectedPlace && (
+              <div className="px-5 pb-5 space-y-4">
+
+                {/* Nazwa miejsca + meta */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <span
+                      className="text-xs font-bold px-2.5 py-1 rounded-full"
+                      style={{
+                        background: `${PLACE_TYPE_COLORS[selectedPlace.type]}18`,
+                        color: PLACE_TYPE_COLORS[selectedPlace.type],
+                        border: `1px solid ${PLACE_TYPE_COLORS[selectedPlace.type]}30`,
+                      }}
+                    >
+                      {PLACE_TYPE_ICONS[selectedPlace.type]} {selectedPlace.category?.name || selectedPlace.type}
+                    </span>
+                    {selectedPlace.distance != null && (
+                      <span className="text-slate-500 text-xs font-medium">{formatDistance(selectedPlace.distance)}</span>
+                    )}
+                    {selectedPlace.user_status === 'completed' && (
+                      <span className="text-brand-400 text-xs font-bold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Zaliczone
                       </span>
-                      {selectedPlace.distance != null && (
-                        <span className="text-slate-500 text-xs">{formatDistance(selectedPlace.distance)}</span>
-                      )}
-                      {selectedPlace.user_status === 'completed' && (
-                        <span className="text-brand-400 text-xs font-bold flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" /> Zaliczone
-                        </span>
-                      )}
-                    </div>
-                    <h3 className="text-white font-bold text-sm leading-snug">{selectedPlace.name}</h3>
-                    {selectedPlace.short_description && (
-                      <p className="text-slate-400 text-xs mt-1 line-clamp-2 leading-relaxed">
-                        {selectedPlace.short_description}
-                      </p>
                     )}
                   </div>
+                  <h2 className="text-white text-xl font-black leading-tight">{selectedPlace.name}</h2>
+                  {selectedPlace.short_description && (
+                    <p className="text-slate-400 text-sm mt-1.5 leading-relaxed line-clamp-2">
+                      {selectedPlace.short_description}
+                    </p>
+                  )}
                 </div>
 
                 {/* Wskazówka */}
                 {selectedPlace.hint && (
                   <div
-                    className="mt-3 p-2.5 rounded-xl"
-                    style={{ background: 'rgba(250,204,21,0.07)', borderLeft: '2px solid rgba(250,204,21,0.4)' }}
+                    className="p-3.5 rounded-2xl"
+                    style={{
+                      background: 'rgba(250,204,21,0.07)',
+                      border: '1px solid rgba(250,204,21,0.18)',
+                    }}
                   >
-                    <p className="text-slate-500 text-xs font-semibold uppercase tracking-wide mb-0.5">Wskazówka</p>
-                    <p className="text-slate-300 text-xs leading-relaxed">{selectedPlace.hint}</p>
+                    <p className="text-yellow-400 text-xs font-bold uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                      💡 Wskazówka
+                    </p>
+                    <p className="text-slate-300 text-sm leading-relaxed">{selectedPlace.hint}</p>
                   </div>
                 )}
 
                 {/* Zadanie */}
                 {selectedPlace.task_content && (
                   <div
-                    className="mt-2 p-2.5 rounded-xl"
-                    style={{ background: 'rgba(34,197,94,0.07)', borderLeft: '2px solid rgba(34,197,94,0.4)' }}
+                    className="p-3.5 rounded-2xl"
+                    style={{
+                      background: 'rgba(34,197,94,0.07)',
+                      border: '1px solid rgba(34,197,94,0.18)',
+                    }}
                   >
-                    <p className="text-slate-500 text-xs font-semibold uppercase tracking-wide mb-0.5">Zadanie</p>
-                    <p className="text-slate-200 text-xs leading-relaxed">{selectedPlace.task_content}</p>
+                    <p className="text-brand-400 text-xs font-bold uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                      🎯 Zadanie
+                    </p>
+                    <p className="text-slate-200 text-sm leading-relaxed">{selectedPlace.task_content}</p>
+                  </div>
+                )}
+
+                {/* Quest step powiązany z tym miejscem */}
+                {relatedSteps.length > 0 && (
+                  <div
+                    className="p-3.5 rounded-2xl"
+                    style={{ background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)' }}
+                  >
+                    <p className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5" style={{ color: '#f59e0b' }}>
+                      🗺️ Etap questa
+                    </p>
+                    <div className="space-y-2.5">
+                      {relatedSteps.map((step: any) => (
+                        <div key={step.id} className="flex items-start gap-3">
+                          <div
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 mt-0.5"
+                            style={{ background: 'rgba(245,158,11,0.25)', color: '#f59e0b' }}
+                          >
+                            {step.step_number}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-sm font-semibold leading-snug">{step.title}</p>
+                            {step.quest?.title && (
+                              <p className="text-slate-500 text-xs mt-0.5">{step.quest.title}</p>
+                            )}
+                          </div>
+                          {selectedPlace.user_status === 'completed' ? (
+                            <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#4ade80' }} />
+                          ) : (
+                            <Lock className="w-4 h-4 flex-shrink-0 mt-0.5 text-slate-600" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
+            )}
 
-              {/* Quest step powiązany z tym miejscem */}
-              {relatedSteps.length > 0 && (
-                <div
-                  className="p-3 rounded-2xl"
-                  style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}
-                >
-                  <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: '#f59e0b' }}>
-                    🗺️ Etap questa
-                  </p>
-                  {relatedSteps.map((step: any) => (
-                    <div key={step.id} className="flex items-start gap-2">
-                      <div
-                        className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 mt-0.5"
-                        style={{ background: 'rgba(245,158,11,0.2)', color: '#f59e0b' }}
-                      >
-                        {step.step_number}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-white text-xs font-semibold">{step.title}</p>
-                        {step.quest?.title && (
-                          <p className="text-slate-500 text-xs mt-0.5">{step.quest.title}</p>
-                        )}
-                      </div>
-                      {selectedPlace.user_status === 'completed' ? (
-                        <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: '#4ade80' }} />
-                      ) : (
-                        <Lock className="w-4 h-4 flex-shrink-0 text-slate-600" />
+            {/* Lista pobliskich miejsc (gdy brak wybranego punktu) */}
+            {!selectedPlace && nearbyPlaces.length > 0 && (
+              <div className="px-5 pb-5">
+                <p className="text-slate-500 text-xs uppercase tracking-widest font-semibold mb-3">
+                  {userPos ? '📍 Blisko Ciebie' : '🗺️ Wszystkie miejsca'}
+                </p>
+                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                  {nearbyPlaces.map((p) => (
+                    <Link
+                      key={p.id}
+                      href={`/place/${p.id}`}
+                      className="flex-shrink-0 w-40 p-3.5 rounded-2xl transition-all active:scale-95"
+                      style={{ background: 'rgba(22,26,38,0.9)', border: '1px solid rgba(55,60,84,0.7)' }}
+                    >
+                      <p className="text-2xl mb-2">{PLACE_TYPE_ICONS[p.type]}</p>
+                      <p className="text-white text-sm font-bold line-clamp-2 leading-tight mb-1">{p.name}</p>
+                      {p.distance != null && (
+                        <p className="text-slate-500 text-xs">{formatDistance(p.distance)}</p>
                       )}
-                    </div>
+                      {p.user_status === 'completed' && (
+                        <p className="text-brand-400 text-xs mt-1.5 font-semibold flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> Zaliczone
+                        </p>
+                      )}
+                    </Link>
                   ))}
                 </div>
-              )}
+              </div>
+            )}
+          </div>
 
-              {/* CTA */}
+          {/* ── Sticky CTA (only when a place is selected) ── */}
+          {selectedPlace && (
+            <div
+              className="flex-shrink-0 px-5 pt-3 pb-5"
+              style={{ borderTop: '1px solid rgba(55,60,84,0.5)' }}
+            >
               <Link
                 href={`/place/${selectedPlace.id}`}
-                className="btn-primary w-full text-center block text-sm"
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  textAlign: 'center',
+                  padding: '14px 20px',
+                  borderRadius: '16px',
+                  background: selectedPlace.user_status === 'completed'
+                    ? 'rgba(34,197,94,0.15)'
+                    : 'linear-gradient(135deg, #16a34a, #22c55e)',
+                  color: selectedPlace.user_status === 'completed' ? '#4ade80' : '#fff',
+                  fontWeight: 800,
+                  fontSize: '15px',
+                  border: selectedPlace.user_status === 'completed'
+                    ? '1px solid rgba(34,197,94,0.3)'
+                    : 'none',
+                  boxShadow: selectedPlace.user_status === 'completed'
+                    ? 'none'
+                    : '0 6px 20px rgba(34,197,94,0.35)',
+                  letterSpacing: '-0.01em',
+                }}
               >
-                {selectedPlace.user_status === 'completed' ? 'Odwiedź ponownie →' : 'Zalicz ten punkt →'}
+                {selectedPlace.user_status === 'completed' ? '✓ Odwiedź ponownie' : 'Zalicz punkt →'}
               </Link>
-            </div>
-          )}
-
-          {/* Lista pobliskich miejsc (gdy brak wybranego punktu) */}
-          {!selectedPlace && nearbyPlaces.length > 0 && (
-            <div className="px-4 pb-4">
-              <p className="text-slate-500 text-xs uppercase tracking-widest font-semibold mb-3">
-                {userPos ? '📍 Blisko Ciebie' : '🗺️ Wszystkie miejsca'}
-              </p>
-              <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide">
-                {nearbyPlaces.map((p) => (
-                  <Link
-                    key={p.id}
-                    href={`/place/${p.id}`}
-                    className="flex-shrink-0 w-36 p-3 rounded-2xl transition-all active:scale-95"
-                    style={{ background: 'rgba(26,29,39,0.9)', border: '1px solid rgba(45,49,72,0.8)' }}
-                  >
-                    <p className="text-xl mb-1.5">{PLACE_TYPE_ICONS[p.type]}</p>
-                    <p className="text-white text-xs font-bold line-clamp-2 leading-tight mb-1">{p.name}</p>
-                    {p.distance != null && (
-                      <p className="text-slate-500 text-xs">{formatDistance(p.distance)}</p>
-                    )}
-                    {p.user_status === 'completed' && (
-                      <p className="text-brand-400 text-xs mt-1 font-semibold">✓ Zaliczone</p>
-                    )}
-                  </Link>
-                ))}
-              </div>
             </div>
           )}
         </div>
