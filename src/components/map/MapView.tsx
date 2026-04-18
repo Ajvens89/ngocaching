@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, useMap, Circle } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { Search, Filter, Navigation, X, ChevronUp, ChevronDown, MapPin } from 'lucide-react'
+import { Search, Filter, Navigation, X, ChevronUp, ChevronDown, MapPin, CheckCircle2, Lock } from 'lucide-react'
 import Link from 'next/link'
-import { Place, MapFilters, PlaceType } from '@/lib/types'
+import { Place, MapFilters, PlaceType, QuestStep } from '@/lib/types'
 import { BIELSKO_CENTER, DEFAULT_ZOOM, getCurrentPosition, getDistance, formatDistance } from '@/lib/geo'
 import { MAP_TILE_PROVIDERS, MAP_ATTRIBUTION } from '@/lib/constants'
 import { PLACE_TYPE_COLORS, PLACE_TYPE_ICONS, cn } from '@/lib/utils'
@@ -38,9 +38,10 @@ function createPlaceIcon(type: PlaceType, isCompleted: boolean) {
         box-shadow: 0 4px 12px rgba(0,0,0,0.5), 0 0 0 ${isCompleted ? '4px' : '0px'} ${color}33;
         cursor: pointer;
         transition: transform 0.15s;
+        pointer-events: auto;
       ">${emoji}</div>
     `,
-    className: '',
+    className: 'leaflet-div-icon-custom',
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
     popupAnchor: [0, -size / 2],
@@ -97,6 +98,7 @@ function LocationButton({ userPos, onLocate }: { userPos: { lat: number; lng: nu
 export default function MapView() {
   const [places, setPlaces] = useState<Place[]>([])
   const [filteredPlaces, setFilteredPlaces] = useState<Place[]>([])
+  const [questSteps, setQuestSteps] = useState<QuestStep[]>([])
   const [loading, setLoading] = useState(true)
   const [userPos, setUserPos] = useState<{ lat: number; lng: number } | null>(null)
   const [showFilters, setShowFilters] = useState(false)
@@ -109,16 +111,30 @@ export default function MapView() {
     search: '',
   })
 
-  useEffect(() => {
-    async function fetchPlaces() {
-      const dataClient = getAppClient()
-      const { data: placesData, error } = await dataClient
-        .from('places')
-        .select(`*, category:categories(*), organization:organizations(id, name)`)
-        .eq('is_active', true)
-        .limit(200)
+  // ── Stable ref: zawsze aktualny filteredPlaces bez re-tworzenia handlera ──
+  const filteredPlacesRef = useRef<Place[]>([])
+  useEffect(() => { filteredPlacesRef.current = filteredPlaces }, [filteredPlaces])
 
+  useEffect(() => {
+    async function fetchData() {
+      const dataClient = getAppClient()
+      const [placesResult, stepsResult] = await Promise.all([
+        dataClient
+          .from('places')
+          .select(`*, category:categories(*), organization:organizations(id, name)`)
+          .eq('is_active', true)
+          .limit(200),
+        dataClient
+          .from('quest_steps')
+          .select(`*, quest:quests(id, title)`)
+          .limit(200),
+      ])
+
+      const { data: placesData, error } = placesResult
       if (error || !placesData) { setLoading(false); return }
+
+      // Quest steps — do kojarzenia miejsca z etapem questa
+      setQuestSteps((stepsResult.data as QuestStep[]) ?? [])
 
       const { data: { user } } = await dataClient.auth.getUser()
       let completedPlaceIds = new Set<string>()
@@ -138,7 +154,7 @@ export default function MapView() {
       setFilteredPlaces(normalized)
       setLoading(false)
     }
-    fetchPlaces()
+    fetchData()
   }, [])
 
   useEffect(() => {
@@ -169,11 +185,24 @@ export default function MapView() {
     }
   }, [])
 
+  // ── Stabilny handler markera — nie zmienia się między renderami ──────────
+  // BUG FIX: wcześniej tworzony inline, co powodowało re-attach w react-leaflet
+  const handleMarkerClick = useCallback((placeId: string) => {
+    const place = filteredPlacesRef.current.find(p => p.id === placeId) ?? null
+    setSelectedPlace(place)
+    setShowBottomSheet(true)
+  }, []) // celowo pusta deps — handler czyta dane przez ref
+
   const nearbyPlaces = userPos
     ? filteredPlaces.filter((p) => (p.distance || Infinity) < 500).slice(0, 6)
     : filteredPlaces.slice(0, 6)
 
   const hasActiveFilters = filters.type !== 'all' || filters.category_id !== null || filters.status !== 'all'
+
+  // Znajdź quest steps powiązane z wybranym miejscem
+  const relatedSteps = selectedPlace
+    ? questSteps.filter(s => s.place_id === selectedPlace.id)
+    : []
 
   return (
     <div className="relative h-full w-full">
@@ -205,7 +234,6 @@ export default function MapView() {
           )}
         </div>
 
-        {/* Filter button */}
         <button
           onClick={() => setShowFilters(!showFilters)}
           style={{
@@ -227,6 +255,7 @@ export default function MapView() {
             boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
             cursor: 'pointer',
             flexShrink: 0,
+            position: 'relative',
           }}
         >
           <Filter className="w-4 h-4" />
@@ -289,7 +318,13 @@ export default function MapView() {
             position={[place.latitude, place.longitude]}
             icon={createPlaceIcon(place.type, place.user_status === 'completed')}
             eventHandlers={{
-              click: () => { setSelectedPlace(place); setShowBottomSheet(true) },
+              // BUG FIX 1: stopPropagation zapobiega dalszemu procesowaniu przez Leaflet
+              // BUG FIX 2: handleMarkerClick jest stabilny (useCallback + ref),
+              //            nie powoduje off/re-on w react-leaflet na każdym renderze
+              click: (e) => {
+                L.DomEvent.stopPropagation(e as any)
+                handleMarkerClick(place.id)
+              },
             }}
           />
         ))}
@@ -297,7 +332,7 @@ export default function MapView() {
         <LocationButton userPos={userPos} onLocate={handleLocate} />
       </MapContainer>
 
-      {/* ── Count Pill (when no sheet) ── */}
+      {/* ── Count Pill ── */}
       {!showBottomSheet && (
         <button
           onClick={() => setShowBottomSheet(true)}
@@ -330,7 +365,10 @@ export default function MapView() {
         </button>
       )}
 
-      {/* ── Bottom Sheet — nad bottom nav (z-index 60 > nav z-index 50) ── */}
+      {/* ── Bottom Sheet ────────────────────────────────────────────────────── */}
+      {/* BUG FIX 3: zIndex podwyższony z 60 → 1000                            */}
+      {/* Leaflet marker pane ma z-index 600 w swoim stacking context,          */}
+      {/* ale fixed element z z-index 60 w root context mógł być pod nim        */}
       {showBottomSheet && (
         <div
           className="animate-slide-up"
@@ -345,7 +383,7 @@ export default function MapView() {
             borderTop: '1px solid rgba(45,49,72,0.8)',
             borderRadius: '24px 24px 0 0',
             boxShadow: '0 -8px 40px rgba(0,0,0,0.6)',
-            zIndex: 60,
+            zIndex: 1000,
             maxHeight: '58vh',
             overflowY: 'auto',
           }}
@@ -355,7 +393,7 @@ export default function MapView() {
             <div style={{ width: '36px', height: '4px', borderRadius: '99px', background: 'rgba(71,85,105,0.6)' }} />
           </div>
 
-          {/* Close row */}
+          {/* Header */}
           <div className="flex items-center justify-between px-4 pb-3">
             <p className="text-slate-400 text-xs font-semibold uppercase tracking-widest">
               {selectedPlace ? 'Wybrany punkt' : userPos ? 'Blisko Ciebie' : 'Odkryj punkty'}
@@ -378,11 +416,13 @@ export default function MapView() {
             </button>
           </div>
 
-          {/* Selected place card */}
+          {/* ── Wybrany punkt — karta szczegółów ── */}
           {selectedPlace && (
-            <div className="px-4 pb-4">
+            <div className="px-4 pb-4 space-y-3">
+
+              {/* Karta miejsca */}
               <div
-                className="p-4 rounded-2xl mb-3"
+                className="p-4 rounded-2xl"
                 style={{ background: 'rgba(26,29,39,0.9)', border: '1px solid rgba(45,49,72,0.8)' }}
               >
                 <div className="flex items-start gap-3">
@@ -409,6 +449,11 @@ export default function MapView() {
                       {selectedPlace.distance != null && (
                         <span className="text-slate-500 text-xs">{formatDistance(selectedPlace.distance)}</span>
                       )}
+                      {selectedPlace.user_status === 'completed' && (
+                        <span className="text-brand-400 text-xs font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" /> Zaliczone
+                        </span>
+                      )}
                     </div>
                     <h3 className="text-white font-bold text-sm leading-snug">{selectedPlace.name}</h3>
                     {selectedPlace.short_description && (
@@ -418,19 +463,76 @@ export default function MapView() {
                     )}
                   </div>
                 </div>
+
+                {/* Wskazówka */}
+                {selectedPlace.hint && (
+                  <div
+                    className="mt-3 p-2.5 rounded-xl"
+                    style={{ background: 'rgba(250,204,21,0.07)', borderLeft: '2px solid rgba(250,204,21,0.4)' }}
+                  >
+                    <p className="text-slate-500 text-xs font-semibold uppercase tracking-wide mb-0.5">Wskazówka</p>
+                    <p className="text-slate-300 text-xs leading-relaxed">{selectedPlace.hint}</p>
+                  </div>
+                )}
+
+                {/* Zadanie */}
+                {selectedPlace.task_content && (
+                  <div
+                    className="mt-2 p-2.5 rounded-xl"
+                    style={{ background: 'rgba(34,197,94,0.07)', borderLeft: '2px solid rgba(34,197,94,0.4)' }}
+                  >
+                    <p className="text-slate-500 text-xs font-semibold uppercase tracking-wide mb-0.5">Zadanie</p>
+                    <p className="text-slate-200 text-xs leading-relaxed">{selectedPlace.task_content}</p>
+                  </div>
+                )}
               </div>
+
+              {/* Quest step powiązany z tym miejscem */}
+              {relatedSteps.length > 0 && (
+                <div
+                  className="p-3 rounded-2xl"
+                  style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}
+                >
+                  <p className="text-xs font-bold uppercase tracking-widest mb-2" style={{ color: '#f59e0b' }}>
+                    🗺️ Etap questa
+                  </p>
+                  {relatedSteps.map((step: any) => (
+                    <div key={step.id} className="flex items-start gap-2">
+                      <div
+                        className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 mt-0.5"
+                        style={{ background: 'rgba(245,158,11,0.2)', color: '#f59e0b' }}
+                      >
+                        {step.step_number}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-xs font-semibold">{step.title}</p>
+                        {step.quest?.title && (
+                          <p className="text-slate-500 text-xs mt-0.5">{step.quest.title}</p>
+                        )}
+                      </div>
+                      {selectedPlace.user_status === 'completed' ? (
+                        <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: '#4ade80' }} />
+                      ) : (
+                        <Lock className="w-4 h-4 flex-shrink-0 text-slate-600" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* CTA */}
               <Link
                 href={`/place/${selectedPlace.id}`}
                 className="btn-primary w-full text-center block text-sm"
               >
-                Zobacz szczegóły →
+                {selectedPlace.user_status === 'completed' ? 'Odwiedź ponownie →' : 'Zalicz ten punkt →'}
               </Link>
             </div>
           )}
 
-          {/* Nearby places strip */}
-          {nearbyPlaces.length > 0 && (
-            <div className="border-t border-surface-border px-4 py-3">
+          {/* Lista pobliskich miejsc (gdy brak wybranego punktu) */}
+          {!selectedPlace && nearbyPlaces.length > 0 && (
+            <div className="px-4 pb-4">
               <p className="text-slate-500 text-xs uppercase tracking-widest font-semibold mb-3">
                 {userPos ? '📍 Blisko Ciebie' : '🗺️ Wszystkie miejsca'}
               </p>
@@ -443,9 +545,7 @@ export default function MapView() {
                     style={{ background: 'rgba(26,29,39,0.9)', border: '1px solid rgba(45,49,72,0.8)' }}
                   >
                     <p className="text-xl mb-1.5">{PLACE_TYPE_ICONS[p.type]}</p>
-                    <p className="text-white text-xs font-bold line-clamp-2 leading-tight mb-1">
-                      {p.name}
-                    </p>
+                    <p className="text-white text-xs font-bold line-clamp-2 leading-tight mb-1">{p.name}</p>
                     {p.distance != null && (
                       <p className="text-slate-500 text-xs">{formatDistance(p.distance)}</p>
                     )}
