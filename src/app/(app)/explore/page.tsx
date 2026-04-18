@@ -6,9 +6,12 @@ import { createServerDataClient } from '@/lib/data-server'
 import { PLACE_TYPE_ICONS, PLACE_TYPE_LABELS } from '@/lib/utils'
 import { DEFAULT_CATEGORIES } from '@/lib/constants'
 import type { Place } from '@/lib/types'
+import { Suspense } from 'react'
 import SearchBar from './SearchBar'
 
 export const metadata: Metadata = { title: 'Odkryj' }
+// Required so useSearchParams() inside SearchBar is always dynamic
+export const dynamic = 'force-dynamic'
 
 type ExplorePlaceCard = Pick<Place, 'id' | 'name' | 'type' | 'short_description' | 'cover_image'> & {
   category?: { name?: string | null; icon?: string | null; slug?: string | null } | null
@@ -25,6 +28,7 @@ export default async function ExplorePage({
 
   // Jeśli filtrujemy kategorię — pobierz jej ID
   let categoryId: string | null = null
+  let unknownCategory = false
   if (activeCategory) {
     const { data: cat } = await dataClient
       .from('categories')
@@ -32,35 +36,44 @@ export default async function ExplorePage({
       .eq('slug', activeCategory)
       .maybeSingle()
     categoryId = cat?.id ?? null
+    // Category slug was provided but not found in DB → unknown category
+    if (!categoryId) unknownCategory = true
   }
 
-  // Buduj query dla NGO
-  let ngoQuery = dataClient
-    .from('places')
-    .select('id, name, type, short_description, cover_image, category:categories(name, icon, slug), organization:organizations(id, name)')
-    .eq('is_active', true)
-    .eq('type', 'ngo')
-    .order('is_promoted', { ascending: false })
-    .limit(30)
+  // If the requested category doesn't exist, return empty results immediately
+  // to avoid misleadingly returning all places.
+  let ngos: ExplorePlaceCard[] = []
+  let promotedPlaces: ExplorePlaceCard[] = []
 
-  if (categoryId) ngoQuery = ngoQuery.eq('category_id', categoryId)
-  if (searchQuery) ngoQuery = ngoQuery.ilike('name', `%${searchQuery}%`)
+  if (!unknownCategory) {
+    // Buduj query dla NGO
+    let ngoQuery = dataClient
+      .from('places')
+      .select('id, name, type, short_description, cover_image, category:categories(name, icon, slug), organization:organizations(id, name)')
+      .eq('is_active', true)
+      .eq('type', 'ngo')
+      .order('is_promoted', { ascending: false })
+      .limit(30)
 
-  // Polecane miejsca (all types)
-  let promotedQuery = dataClient
-    .from('places')
-    .select('id, name, type, short_description, cover_image, category:categories(name, icon, slug)')
-    .eq('is_active', true)
-    .eq('is_promoted', true)
-    .limit(10)
+    if (categoryId) ngoQuery = ngoQuery.eq('category_id', categoryId)
+    if (searchQuery) ngoQuery = ngoQuery.ilike('name', `%${searchQuery}%`)
 
-  if (categoryId) promotedQuery = promotedQuery.eq('category_id', categoryId)
-  if (searchQuery) promotedQuery = promotedQuery.ilike('name', `%${searchQuery}%`)
+    // Polecane miejsca (all types)
+    let promotedQuery = dataClient
+      .from('places')
+      .select('id, name, type, short_description, cover_image, category:categories(name, icon, slug)')
+      .eq('is_active', true)
+      .eq('is_promoted', true)
+      .limit(10)
 
-  const [{ data: ngosData }, { data: promotedData }] = await Promise.all([ngoQuery, promotedQuery])
+    if (categoryId) promotedQuery = promotedQuery.eq('category_id', categoryId)
+    if (searchQuery) promotedQuery = promotedQuery.ilike('name', `%${searchQuery}%`)
 
-  const ngos           = (ngosData     ?? []) as ExplorePlaceCard[]
-  const promotedPlaces = (promotedData ?? []) as ExplorePlaceCard[]
+    const [{ data: ngosData }, { data: promotedData }] = await Promise.all([ngoQuery, promotedQuery])
+
+    ngos           = (ngosData     ?? []) as ExplorePlaceCard[]
+    promotedPlaces = (promotedData ?? []) as ExplorePlaceCard[]
+  }
 
   const activecat = DEFAULT_CATEGORIES.find((c) => c.slug === activeCategory)
 
@@ -70,7 +83,9 @@ export default async function ExplorePage({
       <div className="px-4 pt-6 pb-4">
         <h1 className="font-display text-2xl font-black text-white">Odkryj</h1>
         <p className="text-slate-400 text-sm mt-0.5">Miejsca i organizacje Bielska-Białej</p>
-        <SearchBar defaultValue={searchQuery} />
+        <Suspense fallback={<div className="mt-4 h-10 rounded-xl bg-surface-elevated animate-pulse" />}>
+          <SearchBar defaultValue={searchQuery} />
+        </Suspense>
       </div>
 
       {/* Kategorie */}
@@ -204,10 +219,16 @@ export default async function ExplorePage({
             <div className="py-12 text-center">
               <p className="text-4xl mb-3">🏢</p>
               <p className="text-white font-bold mb-1">
-                {searchQuery || activeCategory ? 'Brak wyników' : 'Brak organizacji w bazie'}
+                {unknownCategory
+                  ? 'Nieznana kategoria'
+                  : searchQuery || activeCategory
+                  ? 'Brak wyników'
+                  : 'Brak organizacji w bazie'}
               </p>
               <p className="text-slate-400 text-sm">
-                {searchQuery
+                {unknownCategory
+                  ? 'Wybrana kategoria nie istnieje w bazie danych.'
+                  : searchQuery
                   ? `Nie znaleziono NGO dla „${searchQuery}"`
                   : activeCategory
                   ? 'Żadne NGO nie pasuje do tej kategorii'

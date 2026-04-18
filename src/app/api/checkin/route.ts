@@ -18,6 +18,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Musisz być zalogowany.' }, { status: 401 })
     }
 
+    // Idempotency guard: sprawdź czy już zaliczone PRZED dalszą walidacją
+    const { data: existingCheckin } = await dataClient
+      .from('checkins').select('id, points_earned').eq('user_id', user.id).eq('place_id', place_id).maybeSingle()
+
+    if (existingCheckin) {
+      return NextResponse.json({
+        success: true,
+        already_checked: true,
+        points_earned: existingCheckin.points_earned,
+      })
+    }
+
     // Pobierz punkt (verification_data tylko server-side — nigdy nie wraca do klienta)
     const { data: place } = await dataClient
       .from('places')
@@ -28,18 +40,6 @@ export async function POST(request: NextRequest) {
 
     if (!place) {
       return NextResponse.json({ success: false, error: 'Punkt nie istnieje.' }, { status: 404 })
-    }
-
-    // Sprawdź czy już zaliczone
-    const { data: existingCheckin } = await dataClient
-      .from('checkins').select('id, points_earned').eq('user_id', user.id).eq('place_id', place_id).maybeSingle()
-
-    if (existingCheckin) {
-      return NextResponse.json({
-        success: true,
-        already_checked: true,
-        points_earned: existingCheckin.points_earned,
-      })
     }
 
     // ── Weryfikacja ────────────────────────────────────────────────
@@ -104,74 +104,95 @@ export async function POST(request: NextRequest) {
 
     // ── Automatyczny update progresu questów ───────────────────────
     // Szukamy wszystkich etapów questów, w których ten punkt wystąpuje
-    const { data: stepsForPlace } = await dataClient
-      .from('quest_steps')
-      .select('id, quest_id, step_number')
-      .eq('place_id', place_id)
-
     let questCompleted = false
 
-    if (stepsForPlace && stepsForPlace.length > 0) {
-      for (const step of stepsForPlace) {
-        // Pobierz aktualny progress użytkownika dla tego questu
-        const { data: progress } = await dataClient
-          .from('user_progress')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('quest_id', step.quest_id)
-          .maybeSingle()
+    try {
+      const { data: stepsForPlace, error: stepsError } = await dataClient
+        .from('quest_steps')
+        .select('id, quest_id, step_number')
+        .eq('place_id', place_id)
 
-        if (!progress) continue // użytkownik nie rozpoczął tego questu — skip
+      if (stepsError) throw stepsError
 
-        if (progress.steps_completed.includes(step.step_number)) continue // już zaliczone
+      if (stepsForPlace && stepsForPlace.length > 0) {
+        // Track badges awarded in this request to avoid duplicate inserts
+        const awardedBadgesThisRequest = new Set<string>()
 
-        const newCompleted: number[] = [...new Set([...progress.steps_completed, step.step_number])].sort((a, b) => a - b)
+        for (const step of stepsForPlace) {
+          // Pobierz aktualny progress użytkownika dla tego questu
+          const { data: progress } = await dataClient
+            .from('user_progress')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('quest_id', step.quest_id)
+            .maybeSingle()
 
-        // Sprawdź czy quest ukończony
-        const { data: allSteps } = await dataClient
-          .from('quest_steps')
-          .select('step_number, is_optional')
-          .eq('quest_id', step.quest_id)
+          if (!progress) continue // użytkownik nie rozpoczął tego questu — skip
 
-        const requiredSteps = (allSteps ?? []).filter((s: any) => !s.is_optional)
-        const requiredNums  = requiredSteps.map((s: any) => s.step_number)
-        const isCompleted   = requiredNums.every((n: number) => newCompleted.includes(n))
+          if (progress.steps_completed.includes(step.step_number)) continue // już zaliczone
 
-        await dataClient.from('user_progress').update({
-          steps_completed: newCompleted,
-          current_step:    newCompleted[newCompleted.length - 1] + 1,
-          is_completed:    isCompleted,
-          completed_at:    isCompleted ? new Date().toISOString() : null,
-        }).eq('id', progress.id)
+          const newCompleted: number[] = [...new Set([...progress.steps_completed, step.step_number])].sort((a, b) => a - b)
 
-        if (isCompleted) {
-          questCompleted = true
-          // Przyznaj odznakę jeśli quest ma badge
-          const { data: quest } = await dataClient
-            .from('quests').select('badge_id').eq('id', step.quest_id).single()
-          if (quest?.badge_id) {
-            const { data: existingBadge } = await dataClient
-              .from('user_badges')
-              .select('badge_id')
-              .eq('user_id', user.id)
-              .eq('badge_id', quest.badge_id)
-              .maybeSingle()
-            if (!existingBadge) {
-              await dataClient.from('user_badges').insert({
-                user_id: user.id,
-                badge_id: quest.badge_id,
-                earned_at: new Date().toISOString(),
-              })
+          // Sprawdź czy quest ukończony
+          const { data: allSteps, error: allStepsError } = await dataClient
+            .from('quest_steps')
+            .select('step_number, is_optional')
+            .eq('quest_id', step.quest_id)
+
+          if (allStepsError) throw allStepsError
+
+          const requiredSteps = (allSteps ?? []).filter((s: any) => !s.is_optional)
+          const requiredNums  = requiredSteps.map((s: any) => s.step_number)
+
+          // Guard: quest with 0 required steps must not be auto-completed
+          if (requiredNums.length === 0) continue
+
+          const isCompleted = requiredNums.every((n: number) => newCompleted.includes(n))
+
+          await dataClient.from('user_progress').update({
+            steps_completed: newCompleted,
+            current_step:    newCompleted[newCompleted.length - 1] + 1,
+            is_completed:    isCompleted,
+            completed_at:    isCompleted ? new Date().toISOString() : null,
+          }).eq('id', progress.id)
+
+          if (isCompleted) {
+            questCompleted = true
+            // Przyznaj odznakę jeśli quest ma badge
+            const { data: quest } = await dataClient
+              .from('quests').select('badge_id').eq('id', step.quest_id).single()
+            if (quest?.badge_id) {
+              // Guard against duplicate badge award within this request
+              if (!awardedBadgesThisRequest.has(quest.badge_id)) {
+                const { data: existingBadge } = await dataClient
+                  .from('user_badges')
+                  .select('badge_id')
+                  .eq('user_id', user.id)
+                  .eq('badge_id', quest.badge_id)
+                  .maybeSingle()
+                if (!existingBadge) {
+                  awardedBadgesThisRequest.add(quest.badge_id)
+                  await dataClient.from('user_badges').insert({
+                    user_id: user.id,
+                    badge_id: quest.badge_id,
+                    earned_at: new Date().toISOString(),
+                  })
+                }
+              }
             }
           }
         }
       }
+    } catch (progressError) {
+      // Quest progress update failure must not fail the checkin itself
+      console.error('Quest progress update error (non-fatal):', progressError)
     }
 
     return NextResponse.json({
       success: true,
       points_earned: points,
       quest_completed: questCompleted,
+      unlockable_content: (place.unlockable_content as string | null) ?? null,
     })
   } catch (error) {
     console.error('Checkin error:', error)

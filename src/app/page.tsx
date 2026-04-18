@@ -20,23 +20,37 @@ const QUEST_ICONS: Record<Difficulty | string, string> = {
 export default async function HomePage() {
   const dataClient = createServerDataClient()
 
-  // Pobierz liczniki z bazy
-  const [
-    { count: placesCount },
-    { count: questsCount },
-    { count: ngosCount },
-    { data: featuredQuests },
-  ] = await Promise.all([
-    dataClient.from('places').select('id', { count: 'exact', head: true }).eq('is_active', true),
-    dataClient.from('quests').select('id', { count: 'exact', head: true }).eq('is_active', true),
-    dataClient.from('places').select('id', { count: 'exact', head: true }).eq('is_active', true).eq('type', 'ngo'),
-    dataClient
-      .from('quests')
-      .select('id, title, difficulty, estimated_time, steps:quest_steps(count)')
-      .eq('is_active', true)
-      .order('is_featured', { ascending: false })
-      .limit(4),
-  ])
+  // Pobierz liczniki z bazy — graceful fallback if any query throws
+  let placesCount: number | null = null
+  let questsCount: number | null = null
+  let ngosCount: number | null = null
+  let featuredQuests: any[] | null = null
+
+  try {
+    const [
+      { count: pc },
+      { count: qc },
+      { count: nc },
+      { data: fq },
+    ] = await Promise.all([
+      dataClient.from('places').select('id', { count: 'exact', head: true }).eq('is_active', true),
+      dataClient.from('quests').select('id', { count: 'exact', head: true }).eq('is_active', true),
+      dataClient.from('places').select('id', { count: 'exact', head: true }).eq('is_active', true).eq('type', 'ngo'),
+      dataClient
+        .from('quests')
+        .select('id, title, difficulty, estimated_time, steps:quest_steps(count)')
+        .eq('is_active', true)
+        .order('is_featured', { ascending: false })
+        .limit(4),
+    ])
+    placesCount  = pc ?? null
+    questsCount  = qc ?? null
+    ngosCount    = nc ?? null
+    featuredQuests = fq ?? null
+  } catch (err) {
+    console.error('HomePage data fetch error:', err)
+    // All counts remain null; featuredQuests remains null → sections hidden
+  }
 
   const places = placesCount ?? 0
   const quests = questsCount ?? 0
@@ -138,7 +152,9 @@ export default async function HomePage() {
           <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-5 px-5">
             {(featuredQuests as any[]).map((quest) => {
               const diff = (quest.difficulty || 'easy') as Difficulty
-              const stepsCount = quest.steps?.[0]?.count ?? 0
+              // demo-client returns array of step objects; use .length which works
+              // for both demo (array of objects) and real Supabase count results
+              const stepsCount = quest.steps?.length ?? 0
               return (
                 <Link
                   key={quest.id}

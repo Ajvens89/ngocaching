@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { MapPin, QrCode, KeyRound, MessageSquare, CheckCircle2, Lock, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { Place, VerificationType } from '@/lib/types'
@@ -12,7 +12,7 @@ interface CheckinSectionProps {
   place: Place
 }
 
-type CheckinState = 'idle' | 'loading' | 'success' | 'error'
+type CheckinState = 'idle' | 'loading' | 'success' | 'error' | 'already'
 
 export default function CheckinSection({ place }: CheckinSectionProps) {
   const [state, setState]             = useState<CheckinState>('idle')
@@ -23,6 +23,8 @@ export default function CheckinSection({ place }: CheckinSectionProps) {
   const [pointsEarned, setPointsEarned] = useState(0)
   const [isCheckedIn, setIsCheckedIn] = useState(false)
   const [unlocked, setUnlocked]       = useState<string | null>(null)
+  // Double-submit guard — useRef so value is stable across renders
+  const submittingRef = useRef(false)
   const dataClient = getAppClient()
 
   // Sprawdź czy punkt już zaliczony
@@ -41,12 +43,13 @@ export default function CheckinSection({ place }: CheckinSectionProps) {
         setPointsEarned(data.points_earned)
         // Odblokowana treść widoczna po zaliczeniu
         if (place.unlockable_content) setUnlocked(place.unlockable_content)
+        setState('already')
       }
     }
     checkStatus()
   }, [place.id, place.unlockable_content, dataClient])
 
-  // Pobierz GPS dla weryfikacji GPS
+  // Pobierz GPS dla weryfikacji GPS (initial distance indicator only)
   useEffect(() => {
     if (place.verification_type !== 'gps') return
     navigator.geolocation?.getCurrentPosition((pos) => {
@@ -57,45 +60,104 @@ export default function CheckinSection({ place }: CheckinSectionProps) {
 
   // Wywołaj API route — walidacja po stronie serwera (hasło/odpowiedź NIE trafia do klienta)
   async function handleCheckin(method: VerificationType) {
+    // Double-submit guard
+    if (submittingRef.current) return
+    submittingRef.current = true
+
     setState('loading')
     setErrorMsg('')
+
+    // For GPS: re-fetch position immediately before sending to avoid stale coords
+    let currentLatitude: number | null = userPos?.latitude ?? null
+    let currentLongitude: number | null = userPos?.longitude ?? null
+
+    if (method === 'gps') {
+      try {
+        const freshPos = await new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
+        )
+        currentLatitude = freshPos.coords.latitude
+        currentLongitude = freshPos.coords.longitude
+        setUserPos(freshPos.coords)
+        setDistance(getDistance(freshPos.coords.latitude, freshPos.coords.longitude, place.latitude, place.longitude))
+      } catch {
+        // Fall back to previously cached position; server will reject if too far
+      }
+    }
 
     const body: Record<string, unknown> = {
       place_id: place.id,
       method,
-      latitude:  userPos?.latitude  ?? null,
-      longitude: userPos?.longitude ?? null,
+      latitude:  currentLatitude,
+      longitude: currentLongitude,
     }
     if (method === 'password') body.password = inputValue.trim()
     if (method === 'answer')   body.answer   = inputValue.trim()
+
+    // 15-second timeout guard
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000)
 
     try {
       const res = await fetch('/api/checkin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: controller.signal,
       })
+      clearTimeout(timeoutId)
+
+      // Guard: server might return HTML on 500 instead of JSON
+      const isJson = res.headers.get('content-type')?.includes('application/json')
+      if (!isJson) {
+        setErrorMsg('Błąd serwera. Spróbuj ponownie za chwilę.')
+        setState('error')
+        submittingRef.current = false
+        return
+      }
 
       const json = await res.json()
 
       if (!res.ok) {
-        setErrorMsg(json.error || 'Błąd weryfikacji')
+        setErrorMsg(json.error ?? 'Błąd weryfikacji')
         setState('error')
+        submittingRef.current = false
+        return
+      }
+
+      if (json.already_checked) {
+        setPointsEarned(json.points_earned ?? 0)
+        setIsCheckedIn(true)
+        if (place.unlockable_content) setUnlocked(place.unlockable_content)
+        setState('already')
+        submittingRef.current = false
         return
       }
 
       setPointsEarned(json.points_earned ?? 0)
       setIsCheckedIn(true)
-      if (place.unlockable_content) setUnlocked(place.unlockable_content)
+      // Prefer unlockable_content from API response (avoids re-fetch); fall back to prop
+      if (json.unlockable_content) {
+        setUnlocked(json.unlockable_content as string)
+      } else if (place.unlockable_content) {
+        setUnlocked(place.unlockable_content)
+      }
       setState('success')
-    } catch {
-      setErrorMsg('Błąd połączenia. Sprawdź internet i spróbuj ponownie.')
+    } catch (err: unknown) {
+      clearTimeout(timeoutId)
+      const isAbort = err instanceof Error && err.name === 'AbortError'
+      setErrorMsg(isAbort
+        ? 'Przekroczono czas oczekiwania. Sprawdź połączenie i spróbuj ponownie.'
+        : 'Błąd połączenia. Sprawdź internet i spróbuj ponownie.')
       setState('error')
+    } finally {
+      submittingRef.current = false
     }
   }
 
   // ── Stan: zaliczony ────────────────────────────────────────────
-  if (state === 'success' || isCheckedIn) {
+  const alreadyChecked = state === 'already' || (isCheckedIn && state !== 'success')
+  if (state === 'success' || alreadyChecked) {
     return (
       <div className="space-y-4">
         <div
@@ -106,7 +168,10 @@ export default function CheckinSection({ place }: CheckinSectionProps) {
             style={{ background: 'rgba(34,197,94,0.15)', border: '2px solid rgba(34,197,94,0.5)' }}>
             <CheckCircle2 className="w-8 h-8 text-brand-400" />
           </div>
-          <h3 className="text-white font-black text-lg">Punkt zaliczony! 🎉</h3>
+          {alreadyChecked
+            ? <h3 className="text-white font-black text-lg">Już zaliczone!</h3>
+            : <h3 className="text-white font-black text-lg">Punkt zaliczony! 🎉</h3>
+          }
           {pointsEarned > 0 && (
             <p className="font-black text-xl" style={{ color: '#4ade80' }}>+{pointsEarned} pkt</p>
           )}
