@@ -6,7 +6,7 @@ import { POINTS_PER_ACTION } from '@/lib/constants'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { place_id, method, latitude, longitude, password, answer, quest_step_id } = body
+    const { place_id, method, latitude, longitude, password, answer } = body
 
     if (!place_id || !method) {
       return NextResponse.json({ success: false, error: 'Brakuje wymaganych danych.' }, { status: 400 })
@@ -18,121 +18,163 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Musisz być zalogowany.' }, { status: 401 })
     }
 
-    const { data: place } = await dataClient.from('places').select('*').eq('id', place_id).eq('is_active', true).single()
+    // Pobierz punkt (verification_data tylko server-side — nigdy nie wraca do klienta)
+    const { data: place } = await dataClient
+      .from('places')
+      .select('id, latitude, longitude, gps_radius, verification_type, verification_data, unlockable_content')
+      .eq('id', place_id)
+      .eq('is_active', true)
+      .single()
+
     if (!place) {
       return NextResponse.json({ success: false, error: 'Punkt nie istnieje.' }, { status: 404 })
     }
 
-    const { data: existingCheckin } = await dataClient.from('checkins').select('*').eq('user_id', user.id).eq('place_id', place_id).maybeSingle()
+    // Sprawdź czy już zaliczone
+    const { data: existingCheckin } = await dataClient
+      .from('checkins').select('id, points_earned').eq('user_id', user.id).eq('place_id', place_id).maybeSingle()
+
     if (existingCheckin) {
-      return NextResponse.json({ success: false, error: 'Ten punkt już jest zaliczony.' }, { status: 409 })
+      return NextResponse.json({
+        success: true,
+        already_checked: true,
+        points_earned: existingCheckin.points_earned,
+      })
     }
 
-    let verified = false
+    // ── Weryfikacja ────────────────────────────────────────────────
     switch (method) {
       case 'gps': {
         if (!latitude || !longitude) {
           return NextResponse.json({ success: false, error: 'Brak danych GPS.' }, { status: 400 })
         }
-        const distance = getDistance(latitude, longitude, place.latitude, place.longitude)
-        const radius = place.gps_radius || 50
-        if (distance > radius) {
-          return NextResponse.json({ success: false, error: `Za daleko od punktu (${Math.round(distance)} m).` }, { status: 400 })
+        const dist = getDistance(latitude, longitude, place.latitude, place.longitude)
+        if (dist > (place.gps_radius || 50)) {
+          return NextResponse.json({
+            success: false,
+            error: `Za daleko od punktu (${Math.round(dist)} m). Zbliż się na ${place.gps_radius || 50} m.`,
+          }, { status: 400 })
         }
-        verified = true
         break
       }
       case 'password': {
-        const expected = (place.verification_data as any)?.password || 'pomoc'
-        verified = String(password || '').trim().toLowerCase() === String(expected).trim().toLowerCase()
-        if (!verified) return NextResponse.json({ success: false, error: 'Błędne hasło.' }, { status: 400 })
+        // Porównanie TYLKO server-side — klient nigdy nie widzi hasła
+        const expected = String((place.verification_data as any)?.password || '').trim().toLowerCase()
+        const given    = String(password || '').trim().toLowerCase()
+        if (expected && given !== expected) {
+          return NextResponse.json({ success: false, error: 'Błędne hasło. Spróbuj ponownie.' }, { status: 400 })
+        }
         break
       }
       case 'answer': {
-        const expected = (place.verification_data as any)?.answer || 'bielsko'
-        verified = String(answer || '').trim().toLowerCase() === String(expected).trim().toLowerCase()
-        if (!verified) return NextResponse.json({ success: false, error: 'Błędna odpowiedź.' }, { status: 400 })
+        // Porównanie TYLKO server-side — klient nigdy nie widzi odpowiedzi
+        const expected = String((place.verification_data as any)?.answer || '').trim().toLowerCase()
+        const given    = String(answer || '').trim().toLowerCase()
+        if (expected && given !== expected) {
+          return NextResponse.json({ success: false, error: 'Błędna odpowiedź. Spróbuj ponownie.' }, { status: 400 })
+        }
         break
       }
-      case 'qr': {
-        verified = true
-        break
-      }
+      case 'qr':
+        break // walidacja QR odbywa się w /api/qr/[code]
       default:
         return NextResponse.json({ success: false, error: 'Nieznana metoda weryfikacji.' }, { status: 400 })
     }
 
+    // ── Wstaw check-in ─────────────────────────────────────────────
     const pointsMap: Record<string, number> = {
-      gps: POINTS_PER_ACTION.gps_checkin,
-      qr: POINTS_PER_ACTION.qr_checkin,
-      answer: POINTS_PER_ACTION.answer_checkin,
+      gps:      POINTS_PER_ACTION.gps_checkin,
+      qr:       POINTS_PER_ACTION.qr_checkin,
+      answer:   POINTS_PER_ACTION.answer_checkin,
       password: POINTS_PER_ACTION.answer_checkin,
     }
-    const points = pointsMap[method] || 10
+    const points = pointsMap[method] ?? 10
 
-    const { data: checkin } = await dataClient
-      .from('checkins')
-      .insert({
-        user_id: user.id,
-        place_id,
-        quest_step_id: quest_step_id || null,
-        verification_method: method,
-        latitude_at_checkin: latitude || null,
-        longitude_at_checkin: longitude || null,
-        points_earned: points,
-        verified_at: new Date().toISOString(),
-        notes: null,
-      })
-      .select()
-      .single()
+    await dataClient.from('checkins').insert({
+      user_id: user.id,
+      place_id,
+      quest_step_id: null,
+      verification_method: method,
+      latitude_at_checkin:  latitude  ?? null,
+      longitude_at_checkin: longitude ?? null,
+      points_earned: points,
+      verified_at: new Date().toISOString(),
+      notes: null,
+    })
+
+    // ── Automatyczny update progresu questów ───────────────────────
+    // Szukamy wszystkich etapów questów, w których ten punkt wystąpuje
+    const { data: stepsForPlace } = await dataClient
+      .from('quest_steps')
+      .select('id, quest_id, step_number')
+      .eq('place_id', place_id)
 
     let questCompleted = false
-    if (quest_step_id) {
-      const { data: step } = await dataClient.from('quest_steps').select('*').eq('id', quest_step_id).single()
-      if (step?.quest_id) {
-        questCompleted = await updateQuestProgress(dataClient as any, user.id, step.quest_id, step.step_number)
+
+    if (stepsForPlace && stepsForPlace.length > 0) {
+      for (const step of stepsForPlace) {
+        // Pobierz aktualny progress użytkownika dla tego questu
+        const { data: progress } = await dataClient
+          .from('user_progress')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('quest_id', step.quest_id)
+          .maybeSingle()
+
+        if (!progress) continue // użytkownik nie rozpoczął tego questu — skip
+
+        if (progress.steps_completed.includes(step.step_number)) continue // już zaliczone
+
+        const newCompleted: number[] = [...new Set([...progress.steps_completed, step.step_number])].sort((a, b) => a - b)
+
+        // Sprawdź czy quest ukończony
+        const { data: allSteps } = await dataClient
+          .from('quest_steps')
+          .select('step_number, is_optional')
+          .eq('quest_id', step.quest_id)
+
+        const requiredSteps = (allSteps ?? []).filter((s: any) => !s.is_optional)
+        const requiredNums  = requiredSteps.map((s: any) => s.step_number)
+        const isCompleted   = requiredNums.every((n: number) => newCompleted.includes(n))
+
+        await dataClient.from('user_progress').update({
+          steps_completed: newCompleted,
+          current_step:    newCompleted[newCompleted.length - 1] + 1,
+          is_completed:    isCompleted,
+          completed_at:    isCompleted ? new Date().toISOString() : null,
+        }).eq('id', progress.id)
+
+        if (isCompleted) {
+          questCompleted = true
+          // Przyznaj odznakę jeśli quest ma badge
+          const { data: quest } = await dataClient
+            .from('quests').select('badge_id').eq('id', step.quest_id).single()
+          if (quest?.badge_id) {
+            const { data: existingBadge } = await dataClient
+              .from('user_badges')
+              .select('badge_id')
+              .eq('user_id', user.id)
+              .eq('badge_id', quest.badge_id)
+              .maybeSingle()
+            if (!existingBadge) {
+              await dataClient.from('user_badges').insert({
+                user_id: user.id,
+                badge_id: quest.badge_id,
+                earned_at: new Date().toISOString(),
+              })
+            }
+          }
+        }
       }
     }
 
-    return NextResponse.json({ success: true, checkin, points_earned: points, quest_completed: questCompleted })
+    return NextResponse.json({
+      success: true,
+      points_earned: points,
+      quest_completed: questCompleted,
+    })
   } catch (error) {
     console.error('Checkin error:', error)
     return NextResponse.json({ success: false, error: 'Wewnętrzny błąd serwera.' }, { status: 500 })
   }
-}
-
-async function updateQuestProgress(client: any, userId: string, questId: string, stepNumber: number) {
-  const { data: existing } = await client.from('user_progress').select('*').eq('user_id', userId).eq('quest_id', questId).maybeSingle()
-  const currentSteps = Array.from(new Set([...(existing?.steps_completed || []), stepNumber])).sort((a, b) => a - b)
-
-  if (!existing) {
-    await client.from('user_progress').insert({
-      user_id: userId,
-      quest_id: questId,
-      steps_completed: currentSteps,
-      current_step: currentSteps[currentSteps.length - 1] + 1,
-      is_completed: false,
-      started_at: new Date().toISOString(),
-      completed_at: null,
-    })
-  } else {
-    await client.from('user_progress').update({
-      steps_completed: currentSteps,
-      current_step: currentSteps[currentSteps.length - 1] + 1,
-    }).eq('id', existing.id)
-  }
-
-  const { data: quest } = await client.from('quests').select('*').eq('id', questId).single()
-  const { data: steps } = await client.from('quest_steps').select('*').eq('quest_id', questId)
-  const minSteps = quest?.completion_conditions?.min_steps || steps?.length || 1
-  const completed = currentSteps.length >= minSteps
-
-  if (completed) {
-    const { data: progressRow } = await client.from('user_progress').select('*').eq('user_id', userId).eq('quest_id', questId).maybeSingle()
-    if (progressRow) {
-      await client.from('user_progress').update({ is_completed: true, completed_at: new Date().toISOString() }).eq('id', progressRow.id)
-    }
-  }
-
-  return completed
 }

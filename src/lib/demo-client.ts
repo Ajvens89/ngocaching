@@ -209,6 +209,14 @@ class SelectBuilder {
     return this
   }
 
+  // Obsługa ILIKE (case-insensitive zawieranie)
+  ilike(field: string, pattern: string) {
+    // pattern w stylu Supabase: '%słowo%' → szukamy 'słowo'
+    const term = pattern.replace(/%/g, '').toLowerCase()
+    this.filters.push({ field: `__ilike__${field}`, value: term })
+    return this
+  }
+
   order(field: string, opts?: { ascending?: boolean }) {
     this.sortField = field
     this.ascending = opts?.ascending ?? true
@@ -233,7 +241,14 @@ class SelectBuilder {
   async execute() {
     let rows = getTableData(this.ctx, this.table)
     for (const filter of this.filters) {
-      rows = rows.filter((row) => row?.[filter.field] === filter.value)
+      if (filter.field.startsWith('__ilike__')) {
+        const realField = filter.field.replace('__ilike__', '')
+        rows = rows.filter((row) =>
+          String(row?.[realField] ?? '').toLowerCase().includes(filter.value)
+        )
+      } else {
+        rows = rows.filter((row) => row?.[filter.field] === filter.value)
+      }
     }
     const count = rows.length
     if (this.sortField) {

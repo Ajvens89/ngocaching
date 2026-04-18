@@ -7,7 +7,6 @@ import { Place, VerificationType } from '@/lib/types'
 import { getDistance } from '@/lib/geo'
 import { cn } from '@/lib/utils'
 import { getAppClient } from '@/lib/data-client'
-import { POINTS_PER_ACTION } from '@/lib/constants'
 
 interface CheckinSectionProps {
   place: Place
@@ -16,217 +15,253 @@ interface CheckinSectionProps {
 type CheckinState = 'idle' | 'loading' | 'success' | 'error'
 
 export default function CheckinSection({ place }: CheckinSectionProps) {
-  const [state, setState] = useState<CheckinState>('idle')
-  const [userPos, setUserPos] = useState<GeolocationCoordinates | null>(null)
-  const [distance, setDistance] = useState<number | null>(null)
-  const [inputValue, setInputValue] = useState('')
-  const [errorMsg, setErrorMsg] = useState('')
+  const [state, setState]             = useState<CheckinState>('idle')
+  const [userPos, setUserPos]         = useState<GeolocationCoordinates | null>(null)
+  const [distance, setDistance]       = useState<number | null>(null)
+  const [inputValue, setInputValue]   = useState('')
+  const [errorMsg, setErrorMsg]       = useState('')
   const [pointsEarned, setPointsEarned] = useState(0)
   const [isCheckedIn, setIsCheckedIn] = useState(false)
+  const [unlocked, setUnlocked]       = useState<string | null>(null)
   const dataClient = getAppClient()
 
+  // Sprawdź czy punkt już zaliczony
   useEffect(() => {
     async function checkStatus() {
       const { data: { user } } = await dataClient.auth.getUser()
       if (!user) return
-      const { data } = await dataClient.from('checkins').select('id, points_earned').eq('user_id', user.id).eq('place_id', place.id).maybeSingle()
+      const { data } = await dataClient
+        .from('checkins')
+        .select('id, points_earned')
+        .eq('user_id', user.id)
+        .eq('place_id', place.id)
+        .maybeSingle()
       if (data) {
         setIsCheckedIn(true)
         setPointsEarned(data.points_earned)
+        // Odblokowana treść widoczna po zaliczeniu
+        if (place.unlockable_content) setUnlocked(place.unlockable_content)
       }
     }
     checkStatus()
-  }, [place.id, dataClient])
+  }, [place.id, place.unlockable_content, dataClient])
 
+  // Pobierz GPS dla weryfikacji GPS
   useEffect(() => {
     if (place.verification_type !== 'gps') return
     navigator.geolocation?.getCurrentPosition((pos) => {
       setUserPos(pos.coords)
-      const d = getDistance(pos.coords.latitude, pos.coords.longitude, place.latitude, place.longitude)
-      setDistance(d)
+      setDistance(getDistance(pos.coords.latitude, pos.coords.longitude, place.latitude, place.longitude))
     })
   }, [place])
 
+  // Wywołaj API route — walidacja po stronie serwera (hasło/odpowiedź NIE trafia do klienta)
   async function handleCheckin(method: VerificationType) {
     setState('loading')
     setErrorMsg('')
 
-    const { data: { user } } = await dataClient.auth.getUser()
-    if (!user) {
-      setErrorMsg('Musisz być zalogowany, aby zaliczyć punkt.')
-      setState('error')
-      return
-    }
-
-    const { data: existing } = await dataClient.from('checkins').select('*').eq('user_id', user.id).eq('place_id', place.id).maybeSingle()
-    if (existing) {
-      setIsCheckedIn(true)
-      setPointsEarned(existing.points_earned || 0)
-      setState('success')
-      return
-    }
-
-    if (method === 'gps') {
-      if (!userPos) {
-        setErrorMsg('Nie udało się pobrać lokalizacji.')
-        setState('error')
-        return
-      }
-      const currentDistance = getDistance(userPos.latitude, userPos.longitude, place.latitude, place.longitude)
-      if (currentDistance > (place.gps_radius || 50)) {
-        setErrorMsg(`Za daleko od punktu (${Math.round(currentDistance)} m).`)
-        setState('error')
-        return
-      }
-    }
-
-    if (method === 'password') {
-      const expected = ((place.verification_data as any)?.password || '').toLowerCase().trim()
-      if (expected && inputValue.toLowerCase().trim() !== expected) {
-        setErrorMsg('Błędne hasło.')
-        setState('error')
-        return
-      }
-    }
-
-    if (method === 'answer') {
-      const expected = ((place.verification_data as any)?.answer || '').toLowerCase().trim()
-      if (expected && inputValue.toLowerCase().trim() !== expected) {
-        setErrorMsg('Błędna odpowiedź.')
-        setState('error')
-        return
-      }
-    }
-
-    const pointsMap: Record<VerificationType, number> = {
-      gps: POINTS_PER_ACTION.gps_checkin,
-      qr: POINTS_PER_ACTION.qr_checkin,
-      password: POINTS_PER_ACTION.answer_checkin,
-      answer: POINTS_PER_ACTION.answer_checkin,
-    }
-    const points = pointsMap[method] || 10
-
-    await dataClient.from('checkins').insert({
-      user_id: user.id,
+    const body: Record<string, unknown> = {
       place_id: place.id,
-      quest_step_id: null,
-      verification_method: method,
-      verified_at: new Date().toISOString(),
-      points_earned: points,
-      latitude_at_checkin: userPos?.latitude || null,
-      longitude_at_checkin: userPos?.longitude || null,
-      notes: null,
-    })
+      method,
+      latitude:  userPos?.latitude  ?? null,
+      longitude: userPos?.longitude ?? null,
+    }
+    if (method === 'password') body.password = inputValue.trim()
+    if (method === 'answer')   body.answer   = inputValue.trim()
 
-    setPointsEarned(points)
-    setIsCheckedIn(true)
-    setState('success')
+    try {
+      const res = await fetch('/api/checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      const json = await res.json()
+
+      if (!res.ok) {
+        setErrorMsg(json.error || 'Błąd weryfikacji')
+        setState('error')
+        return
+      }
+
+      setPointsEarned(json.points_earned ?? 0)
+      setIsCheckedIn(true)
+      if (place.unlockable_content) setUnlocked(place.unlockable_content)
+      setState('success')
+    } catch {
+      setErrorMsg('Błąd połączenia. Sprawdź internet i spróbuj ponownie.')
+      setState('error')
+    }
   }
 
+  // ── Stan: zaliczony ────────────────────────────────────────────
   if (state === 'success' || isCheckedIn) {
     return (
-      <div className="card p-5 text-center space-y-3 animate-bounce-in">
-        <div className="w-16 h-16 rounded-full bg-brand-500/20 border-2 border-brand-500 flex items-center justify-center mx-auto">
-          <CheckCircle2 className="w-8 h-8 text-brand-400" />
+      <div className="space-y-4">
+        <div
+          className="p-5 rounded-2xl text-center space-y-3 animate-bounce-in"
+          style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)' }}
+        >
+          <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto glow-green"
+            style={{ background: 'rgba(34,197,94,0.15)', border: '2px solid rgba(34,197,94,0.5)' }}>
+            <CheckCircle2 className="w-8 h-8 text-brand-400" />
+          </div>
+          <h3 className="text-white font-black text-lg">Punkt zaliczony! 🎉</h3>
+          {pointsEarned > 0 && (
+            <p className="font-black text-xl" style={{ color: '#4ade80' }}>+{pointsEarned} pkt</p>
+          )}
         </div>
-        <h3 className="text-white font-bold text-lg">Punkt zaliczony!</h3>
-        {pointsEarned > 0 && <p className="text-brand-400 font-semibold">+{pointsEarned} punktów</p>}
-        {place.unlockable_content && (
-          <div className="mt-4 p-4 bg-surface-elevated rounded-xl border border-brand-500/30 text-left">
-            <p className="text-brand-400 text-xs uppercase tracking-wider mb-2 flex items-center gap-1">🔓 Odblokowana treść</p>
-            <p className="text-slate-300 text-sm leading-relaxed">{place.unlockable_content}</p>
+
+        {/* Odblokowana treść */}
+        {unlocked && (
+          <div className="p-4 rounded-2xl"
+            style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)' }}>
+            <p className="text-brand-400 text-xs uppercase tracking-widest font-bold mb-2 flex items-center gap-1.5">
+              🔓 Odblokowana treść
+            </p>
+            <p className="text-slate-200 text-sm leading-relaxed">{unlocked}</p>
           </div>
         )}
-        <Link href="/profile" className="btn-secondary w-full block text-center text-sm mt-2">Zobacz swój profil</Link>
+
+        <Link href="/profile" className="btn-secondary w-full block text-center text-sm">
+          Zobacz swój profil →
+        </Link>
       </div>
     )
   }
 
-  const vType = place.verification_type
-  const inGpsRange = distance !== null && distance <= (place.gps_radius || 50)
+  // ── Formularz zaliczenia ───────────────────────────────────────
+  const vType    = place.verification_type
+  const inRange  = distance !== null && distance <= (place.gps_radius || 50)
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-white font-semibold">Zalicz ten punkt</h3>
-        <span className="category-badge text-slate-400">
-          {vType === 'gps' && '📍 GPS'}
-          {vType === 'qr' && '📷 QR'}
+        <h3 className="text-white font-bold">Zalicz ten punkt</h3>
+        <span className="text-xs font-bold px-2.5 py-1 rounded-full"
+          style={{ background: 'rgba(45,49,72,0.8)', color: '#94a3b8' }}>
+          {vType === 'gps'      && '📍 GPS'}
+          {vType === 'qr'       && '📷 QR'}
           {vType === 'password' && '🔑 Hasło'}
-          {vType === 'answer' && '❓ Odpowiedź'}
+          {vType === 'answer'   && '❓ Odpowiedź'}
         </span>
       </div>
 
+      {/* Wskazówka */}
       {place.hint && (
-        <div className="card p-3 border-l-2 border-yellow-500/50">
-          <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Wskazówka</p>
+        <div className="p-3 rounded-2xl" style={{ background: 'rgba(250,204,21,0.08)', borderLeft: '3px solid rgba(250,204,21,0.5)' }}>
+          <p className="text-slate-500 text-xs uppercase tracking-widest font-semibold mb-1">Wskazówka</p>
           <p className="text-slate-300 text-sm">{place.hint}</p>
         </div>
       )}
 
+      {/* Zadanie */}
       {place.task_content && (
-        <div className="card p-3 border-l-2 border-brand-500/50">
-          <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Zadanie</p>
+        <div className="p-3 rounded-2xl" style={{ background: 'rgba(34,197,94,0.06)', borderLeft: '3px solid rgba(34,197,94,0.4)' }}>
+          <p className="text-slate-500 text-xs uppercase tracking-widest font-semibold mb-1">Zadanie</p>
           <p className="text-slate-300 text-sm">{place.task_content}</p>
         </div>
       )}
 
+      {/* GPS */}
       {vType === 'gps' && (
-        <div className="card p-4">
+        <div className="p-4 rounded-2xl" style={{ background: 'rgba(26,29,39,1)', border: '1px solid rgba(45,49,72,0.8)' }}>
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <MapPin className="w-4 h-4 text-brand-400" />
-              <span className="text-white text-sm font-medium">Zalicz przez GPS</span>
+              <span className="text-white text-sm font-semibold">Zalicz przez GPS</span>
             </div>
             {distance !== null && (
-              <span className={cn('text-sm font-medium', inGpsRange ? 'text-brand-400' : 'text-slate-400')}>
-                {distance < 1000 ? `${Math.round(distance)} m` : `${(distance/1000).toFixed(1)} km`}
+              <span className={cn('text-sm font-bold', inRange ? 'text-brand-400' : 'text-slate-400')}>
+                {distance < 1000 ? `${Math.round(distance)} m` : `${(distance / 1000).toFixed(1)} km`}
               </span>
             )}
           </div>
-          {inGpsRange ? (
-            <button onClick={() => handleCheckin('gps')} disabled={state === 'loading'} className="btn-primary w-full flex items-center justify-center gap-2">
+          {inRange ? (
+            <button
+              onClick={() => handleCheckin('gps')}
+              disabled={state === 'loading'}
+              className="btn-primary w-full flex items-center justify-center gap-2"
+            >
               {state === 'loading' && <Loader2 className="w-4 h-4 animate-spin" />}
               Jestem tutaj — Zalicz!
             </button>
           ) : (
-            <div className="text-center py-2">
-              <p className="text-slate-400 text-sm">{distance !== null ? `Za daleko. Potrzebujesz być w ${place.gps_radius || 50} m od punktu.` : 'Pobieranie lokalizacji...'}</p>
-            </div>
+            <p className="text-slate-400 text-sm text-center py-1">
+              {distance !== null
+                ? `Za daleko. Zbliż się na ${place.gps_radius || 50} m od punktu.`
+                : 'Pobieranie lokalizacji...'}
+            </p>
           )}
         </div>
       )}
 
+      {/* QR */}
       {vType === 'qr' && (
-        <Link href="/scan" className="card p-4 flex items-center gap-3 hover:border-brand-500/50 transition-colors">
+        <Link href="/scan"
+          className="flex items-center gap-3 p-4 rounded-2xl transition-all active:scale-[0.98]"
+          style={{ background: 'rgba(26,29,39,1)', border: '1px solid rgba(45,49,72,0.8)' }}>
           <QrCode className="w-5 h-5 text-brand-400 flex-shrink-0" />
           <div>
-            <p className="text-white text-sm font-medium">Skanuj kod QR</p>
-            <p className="text-slate-400 text-xs">Znajdź kod QR przy punkcie</p>
+            <p className="text-white text-sm font-semibold">Skanuj kod QR</p>
+            <p className="text-slate-400 text-xs">Znajdź kod QR przy punkcie i zeskanuj</p>
           </div>
         </Link>
       )}
 
+      {/* Hasło / Odpowiedź — walidacja TYLKO SERVER-SIDE przez /api/checkin */}
       {(vType === 'password' || vType === 'answer') && (
-        <div className="card p-4 space-y-3">
+        <div className="p-4 rounded-2xl space-y-3"
+          style={{ background: 'rgba(26,29,39,1)', border: '1px solid rgba(45,49,72,0.8)' }}>
           <div className="flex items-center gap-2">
-            {vType === 'password' ? <KeyRound className="w-4 h-4 text-brand-400" /> : <MessageSquare className="w-4 h-4 text-brand-400" />}
-            <span className="text-white text-sm font-medium">{vType === 'password' ? 'Wpisz hasło' : 'Odpowiedz na pytanie'}</span>
+            {vType === 'password'
+              ? <KeyRound className="w-4 h-4 text-brand-400" />
+              : <MessageSquare className="w-4 h-4 text-brand-400" />}
+            <span className="text-white text-sm font-semibold">
+              {vType === 'password' ? 'Wpisz hasło' : 'Odpowiedz na pytanie'}
+            </span>
           </div>
-          <input type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} placeholder={vType === 'password' ? 'Hasło...' : 'Twoja odpowiedź...'} className="w-full bg-surface-elevated border border-surface-border rounded-xl px-3 py-2.5 text-white text-sm placeholder-slate-500 outline-none focus:border-brand-500 transition-colors" />
-          <button onClick={() => handleCheckin(vType)} disabled={state === 'loading' || !inputValue.trim()} className="btn-primary w-full flex items-center justify-center gap-2">
+          <input
+            type={vType === 'password' ? 'password' : 'text'}
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && inputValue.trim() && handleCheckin(vType)}
+            placeholder={vType === 'password' ? 'Hasło...' : 'Twoja odpowiedź...'}
+            className="w-full px-3 py-2.5 rounded-xl text-white text-sm placeholder-slate-600 outline-none"
+            style={{ background: 'rgba(15,17,23,0.8)', border: '1px solid rgba(45,49,72,0.8)' }}
+          />
+          <button
+            onClick={() => handleCheckin(vType)}
+            disabled={state === 'loading' || !inputValue.trim()}
+            className="btn-primary w-full flex items-center justify-center gap-2"
+          >
             {state === 'loading' && <Loader2 className="w-4 h-4 animate-spin" />}
             Sprawdź
           </button>
         </div>
       )}
 
-      {state === 'error' && errorMsg && <div className="card p-3 border border-red-500/30 bg-red-500/10"><p className="text-red-400 text-sm">{errorMsg}</p></div>}
+      {/* Błąd */}
+      {state === 'error' && errorMsg && (
+        <div className="p-3 rounded-2xl" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)' }}>
+          <p className="text-red-400 text-sm">{errorMsg}</p>
+        </div>
+      )}
 
+      {/* Podgląd odblokowanej treści (zamazany) */}
       {place.unlockable_content && !isCheckedIn && (
-        <div className="card p-4 opacity-60">
-          <div className="flex items-center gap-2 mb-2"><Lock className="w-4 h-4 text-slate-500" /><p className="text-slate-400 text-sm">Odblokuj zaliczając punkt</p></div>
-          <p className="text-slate-600 text-xs">Zalicz ten punkt, aby odblokować ukrytą treść.</p>
+        <div className="p-4 rounded-2xl opacity-50"
+          style={{ background: 'rgba(26,29,39,1)', border: '1px solid rgba(45,49,72,0.6)' }}>
+          <div className="flex items-center gap-2 mb-2">
+            <Lock className="w-4 h-4 text-slate-500" />
+            <p className="text-slate-400 text-sm font-semibold">Zalicz, aby odblokować treść</p>
+          </div>
+          {/* Zamazany podgląd - nie ujawniamy treści */}
+          <div className="space-y-1.5">
+            {[80, 60, 90, 40].map((w, i) => (
+              <div key={i} className="h-2 rounded-full bg-surface-border" style={{ width: `${w}%` }} />
+            ))}
+          </div>
         </div>
       )}
     </div>

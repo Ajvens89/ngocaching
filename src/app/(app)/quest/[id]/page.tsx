@@ -6,6 +6,7 @@ import { Clock, MapPin, CheckCircle2, Circle, Lock, Trophy } from 'lucide-react'
 import { createServerDataClient } from '@/lib/data-server'
 import { DIFFICULTY_LABELS, DIFFICULTY_COLORS, formatTime, cn } from '@/lib/utils'
 import BackButton from '@/components/ui/BackButton'
+import StartQuestButton from './StartQuestButton'
 
 interface PageProps { params: { id: string } }
 
@@ -218,9 +219,7 @@ export default async function QuestDetailPage({ params }: PageProps) {
         )}
 
         {/* CTA */}
-        {!userProgress && (
-          <button className="btn-primary w-full">Rozpocznij quest</button>
-        )}
+        {!userProgress && <StartQuestButton questId={quest.id} />}
       </div>
     </div>
   )
