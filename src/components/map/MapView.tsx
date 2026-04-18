@@ -189,10 +189,10 @@ export default function MapView() {
   useEffect(() => { filteredPlacesRef.current = filteredPlaces }, [filteredPlaces])
 
   // ── Quest step number per place ───────────────────────────────────────────
-  const stepNumberByPlace = useMemo<Map<string, number>>(() => {
-    const m = new Map<string, number>()
+  const stepNumberByPlace = useMemo<Record<string, number>>(() => {
+    const m: Record<string, number> = {}
     questSteps.forEach(s => {
-      if (!m.has(s.place_id)) m.set(s.place_id, s.step_number)
+      if (!(s.place_id in m)) m[s.place_id] = s.step_number
     })
     return m
   }, [questSteps])
@@ -426,7 +426,7 @@ export default function MapView() {
           if (!place) return null
 
           const isSelected = selectedPlace?.id === place.id
-          const stepNum    = stepNumberByPlace.get(place.id) ?? null
+          const stepNum    = stepNumberByPlace[place.id] ?? null
 
           return (
             <Marker key={place.id} longitude={place.longitude} latitude={place.latitude} anchor="center">
