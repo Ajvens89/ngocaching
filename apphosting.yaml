@@ -8,17 +8,11 @@ runConfig:
   # memoryMiB: 512
 
 # Environment variables and secrets.
-# env:
-  # Configure environment variables.
-  # See https://firebase.google.com/docs/app-hosting/configure#user-defined-environment
-  # - variable: MESSAGE
-  #   value: Hello world!
-  #   availability:
-  #     - BUILD
-  #     - RUNTIME
-
-  # Grant access to secrets in Cloud Secret Manager.
-  # You can create secrets with the CLI command `firebase apphosting:secrets:set <secretName>`.
-  # See https://firebase.google.com/docs/app-hosting/configure#secret-parameters
-  # - variable: MY_SECRET
-  #   secret: mySecretRef
+env:
+  # Mapbox public token — stored in Firebase Secret Manager
+  # Aby ustawić: firebase apphosting:secrets:set NEXT_PUBLIC_MAPBOX_TOKEN
+  - variable: NEXT_PUBLIC_MAPBOX_TOKEN
+    secret: NEXT_PUBLIC_MAPBOX_TOKEN
+    availability:
+      - BUILD
+      - RUNTIME
