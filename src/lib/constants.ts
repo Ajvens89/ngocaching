@@ -1,5 +1,5 @@
 // ============================================================
-// NGOcaching — Stałe aplikacji
+// MiejskiTrop — Stałe aplikacji
 // ============================================================
 
 export const APP_NAME = 'MiejskiTrop'

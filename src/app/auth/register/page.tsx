@@ -59,6 +59,20 @@ export default function RegisterPage() {
         {error && <p className="text-sm text-red-400">{error}</p>}
         <button disabled={loading} className="btn-primary w-full">{loading ? 'Tworzenie konta...' : 'Utwórz konto'}</button>
         <p className="text-sm text-slate-400 text-center">Masz już konto? <Link href="/auth/login" className="text-brand-400 hover:text-brand-300">Zaloguj się</Link></p>
+
+        {/* Trust bar */}
+        <div className="flex items-center justify-center gap-4 pt-1">
+          {[
+            { icon: '🔒', label: 'Szyfrowane' },
+            { icon: '🚫', label: 'Bez reklam' },
+            { icon: '🤝', label: 'Open source' },
+          ].map(({ icon, label }) => (
+            <div key={label} className="flex items-center gap-1">
+              <span className="text-xs">{icon}</span>
+              <span className="text-[10px] text-slate-600 font-medium">{label}</span>
+            </div>
+          ))}
+        </div>
       </form>
     </div>
   )

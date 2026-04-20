@@ -1,5 +1,5 @@
 // ============================================================
-// NGOcaching — Obliczenia geograficzne
+// MiejskiTrop — Obliczenia geograficzne
 // ============================================================
 
 /**

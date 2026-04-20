@@ -80,6 +80,20 @@ export default function LoginPage() {
             Zarejestruj się bezpłatnie
           </Link>
         </p>
+
+        {/* Trust bar */}
+        <div className="flex items-center justify-center gap-4 pt-1">
+          {[
+            { icon: '🔒', label: 'Szyfrowane' },
+            { icon: '🚫', label: 'Bez reklam' },
+            { icon: '🤝', label: 'Open source' },
+          ].map(({ icon, label }) => (
+            <div key={label} className="flex items-center gap-1">
+              <span className="text-xs">{icon}</span>
+              <span className="text-[10px] text-slate-600 font-medium">{label}</span>
+            </div>
+          ))}
+        </div>
       </form>
     </div>
   )

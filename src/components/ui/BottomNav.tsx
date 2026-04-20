@@ -27,19 +27,17 @@ export default function BottomNav() {
             <Link key={href} href={href} className="flex flex-col items-center gap-1 px-3">
               <div
                 className={cn(
-                  'flex items-center justify-center w-14 h-14 rounded-2xl -mt-7 transition-all duration-200 shadow-lg',
-                  isActive
-                    ? 'shadow-green-500/40'
-                    : 'shadow-black/40'
+                  'flex items-center justify-center w-12 h-12 rounded-2xl -mt-5 transition-all duration-200 shadow-md',
+                  isActive ? 'shadow-green-500/30' : 'shadow-black/30'
                 )}
                 style={{
                   background: isActive
                     ? 'linear-gradient(135deg, #16a34a, #22c55e)'
                     : 'linear-gradient(135deg, #22263a, #2d3148)',
-                  border: isActive ? '2px solid #4ade8060' : '2px solid #2d3148',
+                  border: isActive ? '1.5px solid #4ade8050' : '1.5px solid #2d3148',
                 }}
               >
-                <Icon className={cn('w-6 h-6', isActive ? 'text-white' : 'text-slate-400')} />
+                <Icon className={cn('w-5 h-5', isActive ? 'text-white' : 'text-slate-400')} />
               </div>
               <span
                 className={cn(

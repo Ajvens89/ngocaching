@@ -57,7 +57,7 @@ export default async function ProfilePage() {
         {/* Avatar + Name */}
         <div className="flex items-center gap-4 mb-5">
           <div
-            className="w-20 h-20 rounded-3xl flex items-center justify-center text-2xl font-black overflow-hidden glow-sm"
+            className="w-20 h-20 rounded-3xl flex items-center justify-center text-2xl font-black overflow-hidden"
             style={{ background: 'linear-gradient(135deg, #15803d, #22c55e)' }}
           >
             {profile?.avatar_url ? (
