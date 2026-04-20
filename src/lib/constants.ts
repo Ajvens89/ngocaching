@@ -2,7 +2,7 @@
 // NGOcaching — Stałe aplikacji
 // ============================================================
 
-export const APP_NAME = 'MiejskiTrop' // Proponowana nowa nazwa
+export const APP_NAME = 'MiejskiTrop'
 export const APP_TAGLINE = 'Odkryj Bielsko-Białą. Poznaj tych, którzy mu służą.'
 export const APP_VERSION = '0.1.0'
 

@@ -36,11 +36,25 @@ export default function RegisterPage() {
         </div>
         <div>
           <label className="block text-slate-400 text-sm mb-1.5">E-mail</label>
-          <input className="input-field" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input
+            type="email"
+            autoComplete="email"
+            className="input-field"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="twoj@email.pl"
+          />
         </div>
         <div>
           <label className="block text-slate-400 text-sm mb-1.5">Hasło</label>
-          <input type="password" className="input-field" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <input
+            type="password"
+            autoComplete="new-password"
+            className="input-field"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="min. 6 znaków"
+          />
         </div>
         {error && <p className="text-sm text-red-400">{error}</p>}
         <button disabled={loading} className="btn-primary w-full">{loading ? 'Tworzenie konta...' : 'Utwórz konto'}</button>
