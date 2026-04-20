@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   title: 'Mapa',
 }
 
-// Leaflet nie obsługuje SSR — lazy load
+// mapbox-gl nie obsługuje SSR — lazy load
 const MapView = dynamic(() => import('@/components/map/MapView'), {
   ssr: false,
   loading: () => (
