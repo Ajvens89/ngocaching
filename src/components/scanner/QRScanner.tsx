@@ -228,11 +228,11 @@ export default function QRScanner() {
       {/* Pasek kroków */}
       <WizardSteps state={state} />
 
-      {/* Obszar kamery */}
-      <div className="flex-1 flex flex-col items-center justify-start px-4 pt-2 relative">
+      {/* Obszar kamery — wypełnia dostępną przestrzeń */}
+      <div className="flex-1 flex flex-col items-center justify-start px-3 pt-1 relative">
         <div
-          className="relative w-full rounded-3xl overflow-hidden"
-          style={{ maxWidth: 380, height: 320, background: '#0a0c12' }}
+          className="relative w-full rounded-2xl overflow-hidden"
+          style={{ height: 'min(60vw + 120px, calc(100dvh - 280px))', maxHeight: 420, minHeight: 260, background: '#0a0c12' }}
         >
           {/* Widok kamery */}
           <div id={SCANNER_ID} style={{ width: '100%', height: '100%' }} />

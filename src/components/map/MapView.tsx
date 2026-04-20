@@ -17,9 +17,9 @@ const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 const STYLE_DARK  = 'mapbox://styles/mapbox/dark-v11'
 const STYLE_LIGHT = 'mapbox://styles/mapbox/light-v11'
 
-// ── Marker sizes ──────────────────────────────────────────────────────────────
-const MARKER_SIZE   = 40
-const SELECTED_SIZE = 50
+// ── Marker sizes — min 44px touch target (WCAG 2.5.8) ────────────────────────
+const MARKER_SIZE   = 44
+const SELECTED_SIZE = 54
 
 interface ClusterFeature {
   type: 'Feature'
@@ -170,6 +170,31 @@ export default function MapView() {
   const [filters,           setFilters]           = useState<MapFilters>({
     type: 'all', category_id: null, status: 'all', search: '',
   })
+
+  // ── Bottom sheet swipe-to-dismiss ────────────────────────────────────────
+  const [sheetDragY,  setSheetDragY]  = useState(0)
+  const touchStartY = useRef<number>(0)
+  const isDragging  = useRef(false)
+
+  const handleSheetTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY
+    isDragging.current = true
+  }, [])
+
+  const handleSheetTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isDragging.current) return
+    const delta = e.touches[0].clientY - touchStartY.current
+    if (delta > 0) setSheetDragY(delta) // tylko w dół
+  }, [])
+
+  const handleSheetTouchEnd = useCallback(() => {
+    isDragging.current = false
+    if (sheetDragY > 90) {
+      setShowBottomSheet(false)
+      setSelectedPlace(null)
+    }
+    setSheetDragY(0)
+  }, [sheetDragY])
 
   // ── Dark-mode detection ──────────────────────────────────────────────────
   const [isDark, setIsDark] = useState(true) // default dark to avoid flash
@@ -506,10 +531,15 @@ export default function MapView() {
       {showBottomSheet && (
         <div
           className="animate-slide-up"
+          onTouchStart={handleSheetTouchStart}
+          onTouchMove={handleSheetTouchMove}
+          onTouchEnd={handleSheetTouchEnd}
           style={{
             position: 'fixed',
             bottom: 'calc(72px + env(safe-area-inset-bottom))',
-            left: '50%', transform: 'translateX(-50%)',
+            left: '50%',
+            transform: `translateX(-50%) translateY(${sheetDragY}px)`,
+            transition: isDragging.current ? 'none' : 'transform 0.25s ease',
             width: '100%', maxWidth: '480px',
             background: isDark ? 'rgba(13,15,22,0.98)' : 'rgba(250,252,255,0.98)',
             backdropFilter: 'blur(28px)', WebkitBackdropFilter: 'blur(28px)',
@@ -519,34 +549,43 @@ export default function MapView() {
             borderRadius: '24px 24px 0 0',
             boxShadow: isDark ? '0 -12px 48px rgba(0,0,0,0.7)' : '0 -12px 48px rgba(0,0,0,0.15)',
             zIndex: 1000,
-            maxHeight: '62vh',
+            maxHeight: '65vh',
             display: 'flex', flexDirection: 'column',
           }}
         >
-          {/* Drag handle */}
-          <div className="flex items-center justify-center pt-3 pb-1 flex-shrink-0">
+          {/* Drag handle — powiększony obszar dotyku */}
+          <div className="flex items-center justify-center flex-shrink-0"
+            style={{ minHeight: 32, cursor: 'grab', paddingTop: 10, paddingBottom: 4 }}>
             <div style={{
-              width: 40, height: 4, borderRadius: 99,
-              background: isDark ? 'rgba(71,85,105,0.5)' : 'rgba(150,165,185,0.4)',
+              width: 44, height: 5, borderRadius: 99,
+              background: isDark ? 'rgba(71,85,105,0.6)' : 'rgba(150,165,185,0.5)',
             }} />
           </div>
 
           {/* Header */}
-          <div className="flex items-center justify-between px-5 pt-1 pb-3 flex-shrink-0">
+          <div className="flex items-center justify-between px-4 pt-0 pb-2 flex-shrink-0">
             <p style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: isDark ? '#64748b' : '#94a3b8' }}>
               {selectedPlace ? 'Wybrany punkt' : userPos ? 'Blisko Ciebie' : 'Odkryj punkty'}
             </p>
+            {/* 44×44 touch target wokół małego przycisku */}
             <button
               onClick={() => { setShowBottomSheet(false); setSelectedPlace(null) }}
+              aria-label="Zamknij panel"
               style={{
+                width: 44, height: 44, borderRadius: 12,
+                background: 'transparent', border: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', margin: '-8px -4px -8px 0',
+              }}
+            >
+              <div style={{
                 width: 30, height: 30, borderRadius: 10,
                 background: isDark ? 'rgba(45,49,72,0.7)' : 'rgba(220,225,235,0.7)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer',
                 border: isDark ? '1px solid rgba(71,85,105,0.4)' : '1px solid rgba(180,190,210,0.5)',
-              }}
-            >
-              <X className="w-4 h-4" style={{ color: isDark ? '#94a3b8' : '#64748b' }} />
+              }}>
+                <X className="w-4 h-4" style={{ color: isDark ? '#94a3b8' : '#64748b' }} />
+              </div>
             </button>
           </div>
 
