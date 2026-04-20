@@ -1,10 +1,12 @@
 {
+  "id": "/",
   "name": "MiejskiTrop — Odkryj Bielsko-Białą",
   "short_name": "MiejskiTrop",
   "description": "Odkrywaj organizacje pozarządowe i miejsca Bielska-Białej przez questy, check-iny i interaktywną mapę.",
-  "start_url": "/map",
+  "start_url": "/map?source=pwa",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
   "orientation": "portrait",
   "background_color": "#0f1117",
   "theme_color": "#0f1117",
@@ -22,6 +24,26 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Mapa",
+      "short_name": "Mapa",
+      "url": "/map",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Skanuj QR",
+      "short_name": "Skanuj",
+      "url": "/scan",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Questy",
+      "short_name": "Questy",
+      "url": "/quests",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ],
   "screenshots": [],

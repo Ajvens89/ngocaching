@@ -21,6 +21,7 @@
 
   body {
     @apply min-h-screen bg-surface;
+    min-height: 100dvh;
     padding-bottom: env(safe-area-inset-bottom);
     overscroll-behavior: none;
   }
@@ -144,7 +145,8 @@
 
   /* Safe areas */
   .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
-  .h-screen-nav { height: calc(100vh - 5rem); }
+  .h-screen-nav { height: calc(100dvh - 5rem); }
+  .touch-target { min-width: 44px; min-height: 44px; }
 
   /* Noise texture overlay */
   .noise-overlay {
