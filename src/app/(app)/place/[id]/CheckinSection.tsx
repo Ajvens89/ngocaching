@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { MapPin, QrCode, KeyRound, MessageSquare, CheckCircle2, Lock, Loader2 } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { MapPin, QrCode, KeyRound, MessageSquare, CheckCircle2, Lock, Loader2, RefreshCw, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 import { Place, VerificationType } from '@/lib/types'
 import { getDistance } from '@/lib/geo'
@@ -13,6 +13,7 @@ interface CheckinSectionProps {
 }
 
 type CheckinState = 'idle' | 'loading' | 'success' | 'error' | 'already'
+type GpsState = 'idle' | 'requesting' | 'ok' | 'denied' | 'unavailable' | 'timeout' | 'insecure'
 
 export default function CheckinSection({ place }: CheckinSectionProps) {
   const [state, setState]             = useState<CheckinState>('idle')
@@ -23,6 +24,7 @@ export default function CheckinSection({ place }: CheckinSectionProps) {
   const [pointsEarned, setPointsEarned] = useState(0)
   const [isCheckedIn, setIsCheckedIn] = useState(false)
   const [unlocked, setUnlocked]       = useState<string | null>(null)
+  const [gpsState, setGpsState]       = useState<GpsState>('idle')
   // Double-submit guard — useRef so value is stable across renders
   const submittingRef = useRef(false)
   const dataClient = getAppClient()
@@ -49,14 +51,43 @@ export default function CheckinSection({ place }: CheckinSectionProps) {
     checkStatus()
   }, [place.id, place.unlockable_content, dataClient])
 
-  // Pobierz GPS dla weryfikacji GPS (initial distance indicator only)
+  // Obsługa GPS z pełnym stanem i timeoutem
+  const requestGps = useCallback(() => {
+    if (!navigator.geolocation) {
+      setGpsState('unavailable')
+      return
+    }
+    // Geolocation wymaga HTTPS (z wyjątkiem localhost)
+    if (typeof window !== 'undefined'
+      && !window.isSecureContext
+      && window.location.hostname !== 'localhost') {
+      setGpsState('insecure')
+      return
+    }
+    setGpsState('requesting')
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserPos(pos.coords)
+        setDistance(getDistance(
+          pos.coords.latitude, pos.coords.longitude,
+          place.latitude, place.longitude,
+        ))
+        setGpsState('ok')
+      },
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED)       setGpsState('denied')
+        else if (err.code === err.POSITION_UNAVAILABLE) setGpsState('unavailable')
+        else if (err.code === err.TIMEOUT)              setGpsState('timeout')
+        else                                            setGpsState('unavailable')
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
+    )
+  }, [place.latitude, place.longitude])
+
   useEffect(() => {
     if (place.verification_type !== 'gps') return
-    navigator.geolocation?.getCurrentPosition((pos) => {
-      setUserPos(pos.coords)
-      setDistance(getDistance(pos.coords.latitude, pos.coords.longitude, place.latitude, place.longitude))
-    })
-  }, [place])
+    requestGps()
+  }, [place.verification_type, requestGps])
 
   // Wywołaj API route — walidacja po stronie serwera (hasło/odpowiedź NIE trafia do klienta)
   async function handleCheckin(method: VerificationType) {
@@ -242,7 +273,8 @@ export default function CheckinSection({ place }: CheckinSectionProps) {
               </span>
             )}
           </div>
-          {inRange ? (
+          {/* Stan 1: OK i w zasięgu — przycisk zalicz */}
+          {gpsState === 'ok' && inRange && (
             <button
               onClick={() => handleCheckin('gps')}
               disabled={state === 'loading'}
@@ -251,12 +283,101 @@ export default function CheckinSection({ place }: CheckinSectionProps) {
               {state === 'loading' && <Loader2 className="w-4 h-4 animate-spin" />}
               Jestem tutaj — Zalicz!
             </button>
-          ) : (
-            <p className="text-slate-400 text-sm text-center py-1">
-              {distance !== null
-                ? `Za daleko. Zbliż się na ${place.gps_radius || 50} m od punktu.`
-                : 'Pobieranie lokalizacji...'}
-            </p>
+          )}
+
+          {/* Stan 2: OK ale za daleko */}
+          {gpsState === 'ok' && !inRange && distance !== null && (
+            <div className="space-y-2">
+              <p className="text-slate-400 text-sm text-center py-1">
+                Za daleko. Zbliż się na {place.gps_radius || 50} m od punktu.
+              </p>
+              <button
+                onClick={requestGps}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs text-slate-300 transition-colors"
+                style={{ background: 'rgba(45,49,72,0.4)', border: '1px solid rgba(45,49,72,0.8)' }}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Odśwież lokalizację
+              </button>
+            </div>
+          )}
+
+          {/* Stan 3: trwa pobieranie */}
+          {gpsState === 'requesting' && (
+            <div className="flex items-center justify-center gap-2 py-3 text-slate-300 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin text-brand-400" />
+              Pobieranie lokalizacji…
+            </div>
+          )}
+
+          {/* Stan 4: odmowa uprawnień */}
+          {gpsState === 'denied' && (
+            <div className="space-y-2">
+              <div className="p-3 rounded-xl" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-red-300 text-sm font-semibold">Brak dostępu do lokalizacji</p>
+                    <p className="text-slate-400 text-xs mt-1 leading-relaxed">
+                      Zezwól na lokalizację: kłódka obok paska adresu → Uprawnienia
+                      → Lokalizacja → Zezwól. Następnie odśwież stronę.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={requestGps}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm text-white font-semibold transition-all active:scale-95"
+                style={{ background: 'linear-gradient(135deg, #16a34a, #22c55e)' }}
+              >
+                <RefreshCw className="w-4 h-4" />
+                Spróbuj ponownie
+              </button>
+            </div>
+          )}
+
+          {/* Stan 5: timeout */}
+          {gpsState === 'timeout' && (
+            <div className="space-y-2">
+              <p className="text-slate-400 text-sm text-center py-1">
+                Nie udało się pobrać lokalizacji w rozsądnym czasie. Wyjdź na zewnątrz albo spróbuj ponownie.
+              </p>
+              <button
+                onClick={requestGps}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-sm text-white font-semibold transition-all active:scale-95"
+                style={{ background: 'linear-gradient(135deg, #16a34a, #22c55e)' }}
+              >
+                <RefreshCw className="w-4 h-4" />
+                Spróbuj ponownie
+              </button>
+            </div>
+          )}
+
+          {/* Stan 6: GPS niedostępny (np. brak czujnika, offline) */}
+          {gpsState === 'unavailable' && (
+            <div className="space-y-2">
+              <p className="text-slate-400 text-sm text-center py-1">
+                Lokalizacja nieodstępna na tym urządzeniu. Włącz GPS w ustawieniach systemu.
+              </p>
+              <button
+                onClick={requestGps}
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs text-slate-300 transition-colors"
+                style={{ background: 'rgba(45,49,72,0.4)', border: '1px solid rgba(45,49,72,0.8)' }}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Spróbuj ponownie
+              </button>
+            </div>
+          )}
+
+          {/* Stan 7: niezabezpieczone połączenie (http://) */}
+          {gpsState === 'insecure' && (
+            <div className="p-3 rounded-xl" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)' }}>
+              <p className="text-red-300 text-sm font-semibold">Wymagane HTTPS</p>
+              <p className="text-slate-400 text-xs mt-1">
+                GPS działa tylko na stronach HTTPS. Użyj https://miejskitrop.pl
+              </p>
+            </div>
           )}
         </div>
       )}

@@ -123,7 +123,7 @@ export default async function HomePage() {
             </div>
           </div>
 
-          <h1 className="font-display text-5xl font-black text-white tracking-tight leading-none mb-3">
+          <h1 className="font-display text-[40px] xs:text-5xl sm:text-6xl font-black text-white tracking-tight leading-none mb-3 break-words">
             Miejski
             <span className="bg-clip-text text-transparent"
               style={{ backgroundImage: 'linear-gradient(135deg, #4ade80, #22c55e)' }}>

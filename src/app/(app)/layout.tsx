@@ -1,5 +1,6 @@
 import BottomNav from '@/components/ui/BottomNav'
 import InstallBanner from '@/components/ui/InstallBanner'
+import LocationPermissionOverlay from '@/components/ui/LocationPermissionOverlay'
 import OnboardingOverlay from '@/components/onboarding/OnboardingOverlay'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -10,6 +11,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {children}
       </main>
       <BottomNav />
+      <LocationPermissionOverlay />
       <InstallBanner />
     </div>
   )

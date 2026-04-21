@@ -1,11 +1,16 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { X, Download, Share, MoreVertical } from 'lucide-react'
 
 type Platform = 'android' | 'ios' | 'desktop' | null
 
 const DISMISSED_KEY = 'mt_install_dismissed'
+
+// Banner by się nakładał na count pill, przycisk lokalizacji, przyciski skanera.
+// Na home jest i tak widoczna sekcja InstallSection, więc to nic nie zabiera.
+const HIDE_ON_PATHS = ['/map', '/scan']
 
 function detectPlatform(): Platform {
   if (typeof window === 'undefined') return null
@@ -34,10 +39,14 @@ declare global {
 }
 
 export default function InstallBanner() {
+  const pathname = usePathname()
   const [show, setShow] = useState(false)
   const [platform, setPlatform] = useState<Platform>(null)
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
   const [showIosHint, setShowIosHint] = useState(false)
+
+  // Ukryj na ekranach gdzie zasłaniałby UI
+  const hidden = HIDE_ON_PATHS.some(p => pathname?.startsWith(p))
   const mounted = useRef(false)
 
   useEffect(() => {
@@ -118,7 +127,7 @@ export default function InstallBanner() {
     }
   }
 
-  if (!show) return null
+  if (!show || hidden) return null
 
   return (
     <div
