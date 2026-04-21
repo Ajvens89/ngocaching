@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter, Syne } from 'next/font/google'
+import Script from 'next/script'
 import '../styles/globals.css'
 
 const inter = Inter({
@@ -22,11 +23,25 @@ export const metadata: Metadata = {
   description:
     'Odkrywaj Bielsko-Białą, poznawaj organizacje pozarządowe i zaliczaj miejskie questy. Miasto czeka na Twoje odkrycia.',
   manifest: '/manifest.json',
+  applicationName: 'MiejskiTrop',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
     title: 'MiejskiTrop',
   },
+  icons: {
+    icon: [
+      { url: '/icons/favicon.ico', sizes: 'any' },
+      { url: '/icons/favicon-32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/icons/favicon-16.png', sizes: '16x16', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+      { url: '/icons/apple-touch-icon-167.png', sizes: '167x167', type: 'image/png' },
+      { url: '/icons/apple-touch-icon-152.png', sizes: '152x152', type: 'image/png' },
+    ],
+  },
+  formatDetection: { telephone: false },
   openGraph: {
     type: 'website',
     locale: 'pl_PL',
@@ -51,14 +66,19 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pl" className={`${inter.variable} ${syne.variable}`}>
-      <head>
-        <link rel="icon" href="/icons/favicon.ico" sizes="any" />
-        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-        <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-      </head>
       <body className={`${inter.variable} ${syne.variable} antialiased`}>
+        {/* Przechwyć beforeinstallprompt zanim React się zamontuje — inaczej
+            event może wypalić za szybko i banner instalacji nigdy się nie pojawi. */}
+        <Script id="mt-install-capture" strategy="beforeInteractive">{`
+          (function(){
+            if (typeof window === 'undefined') return;
+            window.__mtDeferredPrompt = window.__mtDeferredPrompt || null;
+            window.addEventListener('beforeinstallprompt', function(e){
+              e.preventDefault();
+              window.__mtDeferredPrompt = e;
+            }, { once: false });
+          })();
+        `}</Script>
         {children}
       </body>
     </html>

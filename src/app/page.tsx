@@ -3,6 +3,7 @@ import { MapPin, Users, Clock, ArrowRight, Navigation, CheckCircle } from 'lucid
 import { createServerDataClient } from '@/lib/data-server'
 import { DIFFICULTY_LABELS, formatTime } from '@/lib/utils'
 import type { Difficulty } from '@/lib/types'
+import InstallSection from '@/components/ui/InstallSection'
 
 const QUEST_GRADIENTS: Record<Difficulty | string, string> = {
   easy:   'linear-gradient(135deg, #14532d 0%, #166534 100%)',
@@ -280,6 +281,9 @@ export default async function HomePage() {
           </div>
         </section>
 
+        {/* ── Instaluj jako aplikację ─────────────────────── */}
+        <InstallSection />
+
         {/* ── Polecane questy ──────────────────────────────── */}
         {featuredQuests && featuredQuests.length > 0 && (
           <section className="px-5 py-12 max-w-2xl mx-auto w-full border-t w-full"
@@ -401,6 +405,12 @@ export default async function HomePage() {
 
 function Stat({ value, label }: { value: string; label: string }) {
   return (
+    <div className="text-center" role="listitem">
+      <p className="text-white font-black text-xl leading-none">{value}</p>
+      <p className="text-slate-500 text-xs mt-0.5">{label}</p>
+    </div>
+  )
+}
     <div className="text-center" role="listitem">
       <p className="text-white font-black text-xl leading-none">{value}</p>
       <p className="text-slate-500 text-xs mt-0.5">{label}</p>
