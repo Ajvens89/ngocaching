@@ -5,8 +5,6 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { getAppClient } from '@/lib/data-client'
 
-const IS_DEV = process.env.NODE_ENV === 'development'
-
 export default function LoginPage() {
   const router = useRouter()
   const dataClient = getAppClient()
@@ -64,15 +62,6 @@ export default function LoginPage() {
         <button disabled={loading} className="btn-primary w-full">
           {loading ? 'Logowanie...' : 'Zaloguj się'}
         </button>
-
-        {/* Konta demo — tylko lokalnie, ukryte na produkcji */}
-        {IS_DEV && (
-          <div className="text-xs text-slate-600 space-y-0.5 border border-slate-800 rounded-xl p-3">
-            <p className="font-semibold text-slate-500 mb-1">Środowisko dev — konta demo:</p>
-            <p><code className="text-slate-400">demo@miejski.pl</code> / demo123</p>
-            <p><code className="text-slate-400">admin@miejski.pl</code> / admin123</p>
-          </div>
-        )}
 
         <p className="text-sm text-slate-400 text-center">
           Nie masz konta?{' '}

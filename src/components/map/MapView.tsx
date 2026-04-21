@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import Map, { Marker, type MapRef } from 'react-map-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import Supercluster from 'supercluster'
-import { Search, Filter, Navigation, X, ChevronUp, MapPin, CheckCircle2, Lock } from 'lucide-react'
+import { Search, Filter, Navigation, X, ChevronUp, MapPin, CheckCircle2, Lock, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { Place, MapFilters, PlaceType, QuestStep } from '@/lib/types'
 import { BIELSKO_CENTER, DEFAULT_ZOOM, getCurrentPosition, getDistance, formatDistance } from '@/lib/geo'
@@ -502,7 +502,9 @@ export default function MapView() {
       {/* ── Count Pill ───────────────────────────────────────────────────── */}
       {!showBottomSheet && (
         <button
-          onClick={() => setShowBottomSheet(true)}
+          onClick={() => !loading && setShowBottomSheet(true)}
+          disabled={loading}
+          aria-live="polite"
           style={{
             position: 'absolute',
             bottom: '80px', left: '50%', transform: 'translateX(-50%)',
@@ -516,14 +518,24 @@ export default function MapView() {
             fontSize: '13px', fontWeight: 600,
             boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
             backdropFilter: 'blur(16px)',
-            cursor: 'pointer',
+            cursor: loading ? 'wait' : 'pointer',
             whiteSpace: 'nowrap',
+            opacity: loading ? 0.85 : 1,
           }}
         >
-          <MapPin className="w-3.5 h-3.5" style={{ color: '#4ade80' }} />
-          <span style={{ color: '#4ade80', fontWeight: 800 }}>{filteredPlaces.length}</span>
-          {filteredPlaces.length === 1 ? 'punkt' : filteredPlaces.length < 5 ? 'punkty' : 'punktów'}
-          <ChevronUp className="w-3.5 h-3.5 ml-1" />
+          {loading ? (
+            <>
+              <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: '#4ade80' }} />
+              <span>Wczytuję punkty…</span>
+            </>
+          ) : (
+            <>
+              <MapPin className="w-3.5 h-3.5" style={{ color: '#4ade80' }} />
+              <span style={{ color: '#4ade80', fontWeight: 800 }}>{filteredPlaces.length}</span>
+              {filteredPlaces.length === 1 ? 'punkt' : filteredPlaces.length < 5 ? 'punkty' : 'punktów'}
+              <ChevronUp className="w-3.5 h-3.5 ml-1" />
+            </>
+          )}
         </button>
       )}
 
