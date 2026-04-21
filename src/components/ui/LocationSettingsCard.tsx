@@ -11,7 +11,6 @@ async function readPermission(): Promise<PermState> {
   if (typeof navigator === 'undefined' || !navigator.geolocation) return 'error'
   if (!('permissions' in navigator)) return 'unknown'
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const status = await (navigator.permissions as any).query({ name: 'geolocation' })
     if (status.state === 'granted') return 'granted'
     if (status.state === 'denied')  return 'denied'
@@ -31,8 +30,7 @@ export default function LocationSettingsCard() {
     let cleanup: (() => void) | null = null
     if (typeof navigator !== 'undefined' && 'permissions' in navigator) {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (navigator.permissions as any).query({ name: 'geolocation' }).then((status: any) => {
+            (navigator.permissions as any).query({ name: 'geolocation' }).then((status: any) => {
           const onChange = () => {
             if (status.state === 'granted') setPerm('granted')
             else if (status.state === 'denied') setPerm('denied')

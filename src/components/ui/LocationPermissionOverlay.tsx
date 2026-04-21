@@ -17,7 +17,6 @@ async function readPermission(): Promise<PermState> {
   // Permissions API nie jest dostępne w Safari <16.4. Wtedy zwróć 'unknown'.
   if (!('permissions' in navigator)) return 'unknown'
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const status = await (navigator.permissions as any).query({ name: 'geolocation' })
     if (status.state === 'granted')  return 'granted'
     if (status.state === 'denied')   return 'denied'
@@ -50,8 +49,7 @@ export default function LocationPermissionOverlay() {
     let cleanup: (() => void) | null = null
     if (typeof navigator !== 'undefined' && 'permissions' in navigator) {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (navigator.permissions as any).query({ name: 'geolocation' }).then((status: any) => {
+            (navigator.permissions as any).query({ name: 'geolocation' }).then((status: any) => {
           const onChange = () => {
             if (status.state === 'granted') setPerm('granted')
             else if (status.state === 'denied') setPerm('denied')
