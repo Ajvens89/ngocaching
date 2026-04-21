@@ -411,9 +411,3 @@ function Stat({ value, label }: { value: string; label: string }) {
     </div>
   )
 }
-    <div className="text-center" role="listitem">
-      <p className="text-white font-black text-xl leading-none">{value}</p>
-      <p className="text-slate-500 text-xs mt-0.5">{label}</p>
-    </div>
-  )
-}
